@@ -70,7 +70,7 @@ npx wrangler secret put SUPABASE_PUBLISHABLE_KEY
 
 จากนั้นตั้ง WAF/rate limiting ตาม `docs/CLOUDFLARE_SECURITY.md`
 
-โหมด AI ถูกปิดไว้โดยค่าเริ่มต้น (`AI_ASSIST_ENABLED=false`) จนกว่าจะตั้ง rate limit สำหรับ `/api/ai/story-assist`, ตรวจว่าไม่มี request-body logging และทดสอบ circuit breaker แล้ว จึงเปลี่ยนค่าเป็น `true` ใน Cloudflare environment โหมด AI ใช้ binding `AI` ของ Workers AI จึงไม่มี API key อยู่ใน browser ส่วน GitHub Pages เป็น static demo และทำงานเฉพาะโหมดไม่ใช้ AI
+โหมด AI บน Cloudflare Worker ใช้ binding `AI` โดยไม่มี API key ใน browser และมี `AI_RATE_LIMITER` จำกัด 10 ครั้งต่อนาทีต่อค่า client แบบแฮชก่อนอ่าน request body ส่วน GitHub Pages เป็น static demo และทำงานเฉพาะโหมดไม่ใช้ AI หากต้องหยุด AI ฉุกเฉินให้เปลี่ยน `AI_ASSIST_ENABLED=false` แล้ว deploy ใหม่
 
 ## ขอบเขตออฟไลน์และการโทรฉุกเฉิน
 

@@ -89,7 +89,9 @@ MVP มี route `/admin` แยกจาก workflow ประชาชน ใ�
 
 ## AI controls
 
-- `/api/ai/story-assist` ปิดโดยค่าเริ่มต้นด้วย `AI_ASSIST_ENABLED=false`; เปิดได้หลัง WAF/rate limit/body/token limit และ budget alert พร้อมแล้ว
+- `/api/ai/story-assist` เปิดเฉพาะบน Cloudflare Worker ที่มี `AI`, `AI_RATE_LIMITER`, body/token limit และปิด invocation logs; หาก binding ใดขาดให้ fail closed
+- rate-limit key ใช้ค่า `CF-Connecting-IP` ที่แฮชแล้ว ไม่เก็บหรือลง log และจำกัด 10 ครั้งต่อนาทีต่อ Cloudflare location; ต้องติดตาม false positive จากเครือข่ายมือถือ/NAT
+- `AI_ASSIST_ENABLED=false` เป็น circuit breaker สำหรับหยุด AI โดยไม่ปิด workflow แบบกฎ
 - Model ไม่มีสิทธิเลือก/แก้ routing rules หรือส่งคำร้อง
 - Retrieved content เป็นข้อมูล ไม่ใช่ instruction
 - system prompt คงที่และ versioned; tool allow-list; ไม่มี arbitrary URL/file execution

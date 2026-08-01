@@ -22,13 +22,15 @@
 | Path | Method | ต่อ IP/1 นาที | Action |
 |---|---:|---:|---|
 | `/api/knowledge/*` | GET | 60 | Managed challenge แล้ว block |
-| `/api/ai/story-assist` | POST | 5 | Block 10 นาที |
+| `/api/ai/story-assist` | POST | 10 | ตอบ 429 และ `Retry-After: 60` |
 | `/api/analyze` | POST | 5 | Block 10 นาที |
 | `/api/generate` | POST | 3 | Block 10 นาที |
 | `/api/*` body > 32 KB | POST | — | Block |
 | method อื่นบน `/api/knowledge/*` | non-GET | — | Block |
 
 สำหรับ NAT/ชุมชนที่ใช้ IP ร่วม ให้ทดสอบ false positive และใช้ counting characteristics ที่ plan รองรับ เช่น IP + path + trusted session token แบบไม่ persistent
+
+ตัว Worker ใช้ Rate Limiting binding ชื่อ `AI_RATE_LIMITER` ก่อนอ่าน request body โดยแฮช `CF-Connecting-IP` ก่อนใช้เป็น key ค่า 10 ครั้งต่อนาทีเป็นเพียง pilot baseline และ counter มีขอบเขตต่อ Cloudflare location จึงไม่ใช่ระบบบัญชีที่แม่นยำ ต้องเสริม WAF rule และ budget alert ก่อนรับ traffic จำนวนมาก
 
 ## Custom rules intent
 

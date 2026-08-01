@@ -39,7 +39,7 @@ jobs:
           mkdir -p .pages-server-only/app
           mv src/app/admin .pages-server-only/app/admin
           mv src/app/api .pages-server-only/app/api
-          mv src/proxy.ts .pages-server-only/proxy.ts
+          mv src/middleware.ts .pages-server-only/middleware.ts
 
       - name: Build static public demo
         run: npm run build
