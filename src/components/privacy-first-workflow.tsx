@@ -10,6 +10,7 @@ import {
 } from "@/lib/emergency-guidance";
 import { classifyEmergencyText, emergencyThreatKeywords } from "@/lib/emergency-classifier";
 import { EmergencyShortcut } from "@/components/emergency-shortcut";
+import { RightsGuidance } from "@/components/rights-guidance";
 import { StoryInterview } from "@/components/story-interview";
 import {
   createRuleBasedStoryAssistance,
@@ -17,6 +18,7 @@ import {
   type StoryAssistanceResult,
   type StoryFollowUpAnswer,
 } from "@/lib/story-assistance";
+import { suggestRights } from "@/lib/rights-guidance";
 
 const isStaticPublicDemo = process.env.NEXT_PUBLIC_STATIC_PUBLIC_DEMO === "true";
 
@@ -78,6 +80,7 @@ const steps = [
 ] as const;
 
 type EmergencyStatus = "checking" | "safe";
+type WorkflowStage = "story" | "rights";
 
 export function PrivacyFirstWorkflow() {
   const [story, setStory] = useState("");
@@ -94,6 +97,7 @@ export function PrivacyFirstWorkflow() {
   const [assistanceMode, setAssistanceMode] = useState<AssistanceMode>("rules");
   const [aiConsent, setAiConsent] = useState(false);
   const [assistanceResult, setAssistanceResult] = useState<StoryAssistanceResult | null>(null);
+  const [workflowStage, setWorkflowStage] = useState<WorkflowStage>("story");
   const [confirmedFollowUpAnswers, setConfirmedFollowUpAnswers] = useState<StoryFollowUpAnswer[]>([]);
   const [interviewRound, setInterviewRound] = useState(0);
   const [assistanceError, setAssistanceError] = useState("");
@@ -109,9 +113,19 @@ export function PrivacyFirstWorkflow() {
   const restartSpeechTimerRef = useRef<number | null>(null);
   const activeStep = emergencyStatus !== "safe"
     ? 0
-    : assistanceResult
+    : workflowStage === "rights"
+      ? 3
+      : assistanceResult
       ? 2
       : 1;
+  const rightsInput = [
+    story,
+    assistanceResult?.summary ?? "",
+    ...confirmedFollowUpAnswers
+      .filter((answer) => answer.status === "answered")
+      .map((answer) => answer.answer),
+  ].join("\n");
+  const suggestedRights = suggestRights(rightsInput);
   const selectedThreatIdSet = new Set(selectedThreatIds);
   const selectedThreats = emergencyCatalog.threatGroups
     .flatMap((group) => group.threats)
@@ -145,10 +159,20 @@ export function PrivacyFirstWorkflow() {
   }, []);
 
   function resetStoryAssistance() {
+    setWorkflowStage("story");
     setAssistanceResult(null);
     setConfirmedFollowUpAnswers([]);
     setInterviewRound(0);
     setAssistanceError("");
+  }
+
+  function continueFromFacts() {
+    if (!assistanceResult) {
+      void handleStoryAssistance();
+      return;
+    }
+
+    if (assistanceResult.readiness.readyForReview) setWorkflowStage("rights");
   }
 
   function updateStory(nextStory: string) {
@@ -683,6 +707,8 @@ export function PrivacyFirstWorkflow() {
                 </button>
               </div>
             </>
+          ) : workflowStage === "rights" && assistanceResult ? (
+            <RightsGuidance rights={suggestedRights} onBack={() => setWorkflowStage("story")} />
           ) : (
             <>
               <div className="flex items-start justify-between gap-6 border-b border-line pb-7">
@@ -919,21 +945,44 @@ export function PrivacyFirstWorkflow() {
               </aside>
 
               <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWorkflowStage("story");
+                      setEmergencyStatus("checking");
+                    }}
+                    className="min-h-12 px-1 py-3 text-sm font-bold text-ink-soft underline underline-offset-4"
+                  >
+                    ← กลับไปตรวจเหตุเร่งด่วน
+                  </button>
+                  {assistanceResult && (
+                    <button type="button" onClick={resetStoryAssistance} className="min-h-12 px-1 py-3 text-sm font-bold text-coral underline underline-offset-4">
+                      ตรวจข้อเท็จจริงใหม่
+                    </button>
+                  )}
+                </div>
                 <button
                   type="button"
-                  onClick={() => setEmergencyStatus("checking")}
-                  className="min-h-12 px-1 py-3 text-sm font-bold text-ink-soft underline underline-offset-4"
-                >
-                  ← กลับไปตรวจเหตุเร่งด่วน
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleStoryAssistance()}
-                  disabled={story.trim().length < 20 || isAnalyzingStory || (assistanceMode === "ai" && !aiConsent)}
+                  onClick={continueFromFacts}
+                  disabled={
+                    story.trim().length < 20
+                    || isAnalyzingStory
+                    || (!assistanceResult && assistanceMode === "ai" && !aiConsent)
+                    || Boolean(assistanceResult && !assistanceResult.readiness.readyForReview)
+                  }
                   className="min-h-12 bg-ink px-7 py-3 font-bold text-white transition hover:bg-river disabled:cursor-not-allowed disabled:bg-[#b8c3c5]"
-                  title="ขั้นถัดไปคือการจัดลำดับข้อเท็จจริงและถามข้อมูลที่ขาด"
+                  title={assistanceResult?.readiness.readyForReview ? "ขั้นถัดไปคือดูสิทธิที่อาจเกี่ยวข้อง" : "จัดลำดับข้อเท็จจริงและตอบข้อมูลที่ขาดก่อน"}
                 >
-                  {isAnalyzingStory ? "กำลังจัดเรื่อง…" : assistanceResult ? "เริ่มตรวจเรื่องใหม่" : "จัดลำดับข้อเท็จจริง →"}
+                  {isAnalyzingStory
+                    ? "กำลังจัดเรื่อง…"
+                    : assistanceResult?.readiness.readyForReview
+                      ? "ดูสิทธิที่อาจเกี่ยวข้อง →"
+                      : assistanceResult?.mode === "ai" && assistanceResult.followUpQuestions.length > 0
+                        ? "ตอบคำถามเพิ่มเติมก่อน"
+                        : assistanceResult
+                          ? "เพิ่มข้อมูลที่ขาดก่อน"
+                          : "จัดลำดับข้อเท็จจริง →"}
                 </button>
               </div>
             </>
