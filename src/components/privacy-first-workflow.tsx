@@ -10,6 +10,8 @@ import {
 } from "@/lib/emergency-guidance";
 import { classifyEmergencyText, emergencyThreatKeywords } from "@/lib/emergency-classifier";
 import { EmergencyShortcut } from "@/components/emergency-shortcut";
+import { ActionOptionsGuidance } from "@/components/action-options-guidance";
+import { OptionComparison } from "@/components/option-comparison";
 import { RightsGuidance } from "@/components/rights-guidance";
 import { StoryInterview } from "@/components/story-interview";
 import {
@@ -19,6 +21,7 @@ import {
   type StoryFollowUpAnswer,
 } from "@/lib/story-assistance";
 import { suggestRights } from "@/lib/rights-guidance";
+import { suggestActionOptions, type ActionOptionId } from "@/lib/action-options";
 
 const isStaticPublicDemo = process.env.NEXT_PUBLIC_STATIC_PUBLIC_DEMO === "true";
 
@@ -80,7 +83,7 @@ const steps = [
 ] as const;
 
 type EmergencyStatus = "checking" | "safe";
-type WorkflowStage = "story" | "rights";
+type WorkflowStage = "story" | "rights" | "options" | "comparison";
 
 export function PrivacyFirstWorkflow() {
   const [story, setStory] = useState("");
@@ -98,6 +101,7 @@ export function PrivacyFirstWorkflow() {
   const [aiConsent, setAiConsent] = useState(false);
   const [assistanceResult, setAssistanceResult] = useState<StoryAssistanceResult | null>(null);
   const [workflowStage, setWorkflowStage] = useState<WorkflowStage>("story");
+  const [selectedActionOptionIds, setSelectedActionOptionIds] = useState<ActionOptionId[]>([]);
   const [confirmedFollowUpAnswers, setConfirmedFollowUpAnswers] = useState<StoryFollowUpAnswer[]>([]);
   const [interviewRound, setInterviewRound] = useState(0);
   const [assistanceError, setAssistanceError] = useState("");
@@ -114,11 +118,15 @@ export function PrivacyFirstWorkflow() {
   const restartSpeechTimerRef = useRef<number | null>(null);
   const activeStep = emergencyStatus !== "safe"
     ? 0
-    : workflowStage === "rights"
-      ? 3
-      : assistanceResult
-      ? 2
-      : 1;
+    : workflowStage === "comparison"
+      ? 5
+      : workflowStage === "options"
+        ? 4
+        : workflowStage === "rights"
+          ? 3
+          : assistanceResult
+            ? 2
+            : 1;
   const rightsInput = [
     story,
     assistanceResult?.summary ?? "",
@@ -127,6 +135,8 @@ export function PrivacyFirstWorkflow() {
       .map((answer) => answer.answer),
   ].join("\n");
   const suggestedRights = suggestRights(rightsInput);
+  const suggestedActionOptions = suggestActionOptions(rightsInput);
+  const selectedActionOptions = suggestedActionOptions.filter((option) => selectedActionOptionIds.includes(option.id));
   const shouldPromptAiConsent = assistanceMode === "ai"
     && !aiConsent
     && assistanceError.startsWith("กรุณาติ๊กยืนยันการใช้ AI");
@@ -165,6 +175,7 @@ export function PrivacyFirstWorkflow() {
   function resetStoryAssistance() {
     setWorkflowStage("story");
     setAssistanceResult(null);
+    setSelectedActionOptionIds([]);
     setConfirmedFollowUpAnswers([]);
     setInterviewRound(0);
     setAssistanceError("");
@@ -177,6 +188,14 @@ export function PrivacyFirstWorkflow() {
     }
 
     if (assistanceResult.readiness.readyForReview) setWorkflowStage("rights");
+  }
+
+  function toggleActionOption(optionId: ActionOptionId) {
+    setSelectedActionOptionIds((currentIds) => (
+      currentIds.includes(optionId)
+        ? currentIds.filter((currentId) => currentId !== optionId)
+        : [...currentIds, optionId]
+    ));
   }
 
   function updateStory(nextStory: string) {
@@ -713,8 +732,22 @@ export function PrivacyFirstWorkflow() {
                 </button>
               </div>
             </>
+          ) : workflowStage === "comparison" && assistanceResult ? (
+            <OptionComparison options={selectedActionOptions} onBack={() => setWorkflowStage("options")} />
+          ) : workflowStage === "options" && assistanceResult ? (
+            <ActionOptionsGuidance
+              options={suggestedActionOptions}
+              selectedIds={selectedActionOptionIds}
+              onToggle={toggleActionOption}
+              onBack={() => setWorkflowStage("rights")}
+              onCompare={() => setWorkflowStage("comparison")}
+            />
           ) : workflowStage === "rights" && assistanceResult ? (
-            <RightsGuidance rights={suggestedRights} onBack={() => setWorkflowStage("story")} />
+            <RightsGuidance
+              rights={suggestedRights}
+              onBack={() => setWorkflowStage("story")}
+              onContinue={() => setWorkflowStage("options")}
+            />
           ) : (
             <>
               <div className="flex items-start justify-between gap-6 border-b border-line pb-7">

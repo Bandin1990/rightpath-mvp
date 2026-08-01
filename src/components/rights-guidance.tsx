@@ -3,9 +3,10 @@ import type { SuggestedRight } from "@/lib/rights-guidance";
 type RightsGuidanceProps = {
   rights: SuggestedRight[];
   onBack: () => void;
+  onContinue: () => void;
 };
 
-export function RightsGuidance({ rights, onBack }: RightsGuidanceProps) {
+export function RightsGuidance({ rights, onBack, onContinue }: RightsGuidanceProps) {
   return (
     <>
       <div className="flex items-start justify-between gap-6 border-b border-line pb-7">
@@ -71,7 +72,9 @@ export function RightsGuidance({ rights, onBack }: RightsGuidanceProps) {
         <button type="button" onClick={onBack} className="min-h-12 px-1 py-3 text-sm font-bold text-ink-soft underline underline-offset-4">
           ← กลับไปตรวจข้อเท็จจริง
         </button>
-        <p className="max-w-sm text-right text-xs leading-5 text-ink-soft">ขั้นถัดไปคือดูทางเลือกและผลที่อาจตามมา</p>
+        <button type="button" onClick={onContinue} className="min-h-12 bg-ink px-7 py-3 font-bold text-white transition hover:bg-river">
+          ดูทางเลือกที่ทำได้ →
+        </button>
       </div>
     </>
   );
