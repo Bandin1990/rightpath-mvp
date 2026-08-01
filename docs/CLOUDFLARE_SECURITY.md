@@ -22,6 +22,7 @@
 | Path | Method | ต่อ IP/1 นาที | Action |
 |---|---:|---:|---|
 | `/api/knowledge/*` | GET | 60 | Managed challenge แล้ว block |
+| `/api/ai/story-assist` | POST | 5 | Block 10 นาที |
 | `/api/analyze` | POST | 5 | Block 10 นาที |
 | `/api/generate` | POST | 3 | Block 10 นาที |
 | `/api/*` body > 32 KB | POST | — | Block |
@@ -35,7 +36,7 @@
 2. Block oversized bodies ก่อนถึง Worker/AI
 3. Challenge known automated/bot anomalies
 4. Rate-limit expensive endpoints แยกจาก static/knowledge
-5. Emergency switch: block `/api/analyze` และ `/api/generate` แต่ไม่ block `/`, `/api/health`, read-only knowledge
+5. Emergency switch: ตั้ง `AI_ASSIST_ENABLED=false` และ block `/api/ai/*`, `/api/analyze`, `/api/generate` แต่ไม่ block `/`, `/api/health`, read-only knowledge
 
 อย่าใส่ค่า secret หรือเนื้อหา request ลง rule expressions/response headers
 

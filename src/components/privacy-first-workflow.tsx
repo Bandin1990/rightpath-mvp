@@ -9,6 +9,12 @@ import {
   type EmergencyCatalog,
 } from "@/lib/emergency-guidance";
 import { classifyEmergencyText, emergencyThreatKeywords } from "@/lib/emergency-classifier";
+import { EmergencyShortcut } from "@/components/emergency-shortcut";
+import {
+  createRuleBasedStoryAssistance,
+  type AssistanceMode,
+  type StoryAssistanceResult,
+} from "@/lib/story-assistance";
 
 const isStaticPublicDemo = process.env.NEXT_PUBLIC_STATIC_PUBLIC_DEMO === "true";
 
@@ -29,6 +35,7 @@ type BrowserSpeechRecognition = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
+  processLocally?: boolean;
   onstart: (() => void) | null;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
   onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
@@ -37,7 +44,15 @@ type BrowserSpeechRecognition = {
   stop: () => void;
 };
 
-type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+type OnDeviceSpeechAvailability = "available" | "downloadable" | "downloading" | "unavailable";
+
+type BrowserSpeechRecognitionConstructor = {
+  new (): BrowserSpeechRecognition;
+  available?: (options: { langs: string[]; processLocally: boolean }) => Promise<OnDeviceSpeechAvailability>;
+  install?: (options: { langs: string[]; processLocally: boolean }) => Promise<boolean>;
+};
+
+type SpeechProcessingMode = "unknown" | "device" | "network";
 
 declare global {
   interface Window {
@@ -72,6 +87,13 @@ export function PrivacyFirstWorkflow() {
   const [showMicrophoneHelp, setShowMicrophoneHelp] = useState(false);
   const [copyLinkStatus, setCopyLinkStatus] = useState("");
   const [speechError, setSpeechError] = useState("");
+  const [speechStatus, setSpeechStatus] = useState("");
+  const [speechProcessingMode, setSpeechProcessingMode] = useState<SpeechProcessingMode>("unknown");
+  const [assistanceMode, setAssistanceMode] = useState<AssistanceMode>("rules");
+  const [aiConsent, setAiConsent] = useState(false);
+  const [assistanceResult, setAssistanceResult] = useState<StoryAssistanceResult | null>(null);
+  const [assistanceError, setAssistanceError] = useState("");
+  const [isAnalyzingStory, setIsAnalyzingStory] = useState(false);
   const [emergencyCatalog, setEmergencyCatalog] = useState<EmergencyCatalog>({
     contacts: emergencyContacts,
     threatGroups: urgentThreatGroups,
@@ -79,6 +101,8 @@ export function PrivacyFirstWorkflow() {
     checkedAt: emergencySourceCheckedAt,
   });
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const shouldKeepListeningRef = useRef(false);
+  const restartSpeechTimerRef = useRef<number | null>(null);
   const activeStep = emergencyStatus === "safe" ? 1 : 0;
   const selectedThreatIdSet = new Set(selectedThreatIds);
   const selectedThreats = emergencyCatalog.threatGroups
@@ -106,12 +130,14 @@ export function PrivacyFirstWorkflow() {
 
   useEffect(() => {
     return () => {
+      shouldKeepListeningRef.current = false;
+      if (restartSpeechTimerRef.current !== null) window.clearTimeout(restartSpeechTimerRef.current);
       recognitionRef.current?.stop();
     };
   }, []);
 
   useEffect(() => {
-    if (isStaticPublicDemo) return;
+    if (isStaticPublicDemo || !navigator.onLine) return;
 
     const controller = new AbortController();
 
@@ -165,29 +191,37 @@ export function PrivacyFirstWorkflow() {
     }
   }
 
-  async function toggleSpeechInput() {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      return;
+  async function canProcessSpeechOnDevice(Recognition: BrowserSpeechRecognitionConstructor) {
+    if (!Recognition.available) return false;
+
+    try {
+      const options = { langs: ["th-TH"], processLocally: true };
+      const availability = await Recognition.available(options);
+      if (availability === "available") return true;
+
+      if ((availability === "downloadable" || availability === "downloading") && Recognition.install) {
+        setSpeechStatus("กำลังเตรียมชุดภาษาไทยสำหรับแปลงเสียงในเครื่อง…");
+        return await Recognition.install(options);
+      }
+    } catch {
+      // This experimental browser feature is optional; fall back to the normal speech service.
     }
 
-    const microphoneAllowed = await requestMicrophoneAccess();
-    if (!microphoneAllowed) return;
+    return false;
+  }
 
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!Recognition) {
-      setSpeechError("อนุญาตไมโครโฟนแล้ว แต่เบราว์เซอร์นี้ยังแปลงเสียงภาษาไทยเป็นข้อความไม่ได้ กรุณาเปิดหน้านี้ใน Chrome หรือ Edge");
-      return;
-    }
+  function startRecognitionSession(Recognition: BrowserSpeechRecognitionConstructor, processLocally: boolean) {
+    if (!shouldKeepListeningRef.current) return;
 
     const recognition = new Recognition();
     recognition.lang = "th-TH";
     recognition.continuous = true;
     recognition.interimResults = false;
+    if (processLocally) recognition.processLocally = true;
     recognition.onstart = () => {
       setIsListening(true);
       setSpeechError("");
+      setSpeechStatus(processLocally ? "กำลังฟังต่อเนื่องและแปลงเสียงในเครื่อง" : "กำลังฟังต่อเนื่องผ่านบริการรู้จำเสียงของเบราว์เซอร์");
     };
     recognition.onresult = (event) => {
       let transcript = "";
@@ -207,25 +241,139 @@ export function PrivacyFirstWorkflow() {
         "not-allowed": "ไมโครโฟนไม่ได้รับอนุญาต กรุณาอนุญาตการใช้ไมโครโฟนแล้วลองอีกครั้ง",
         "service-not-allowed": "เบราว์เซอร์ไม่อนุญาตให้ใช้บริการรู้จำเสียง กรุณาพิมพ์แทน",
         "audio-capture": "ไม่พบไมโครโฟนที่พร้อมใช้งาน กรุณาตรวจอุปกรณ์แล้วลองอีกครั้ง",
-        "no-speech": "ยังไม่ได้ยินเสียง ลองพูดใกล้ไมโครโฟนแล้วเริ่มใหม่อีกครั้ง",
         network: "บริการรู้จำเสียงเชื่อมต่อไม่ได้ กรุณาลองใหม่หรือพิมพ์แทน",
+        "language-not-supported": "อุปกรณ์นี้ยังไม่รองรับการแปลงเสียงภาษาไทย กรุณาพิมพ์แทน",
       };
 
+      if (event.error === "no-speech" || event.error === "aborted") {
+        if (shouldKeepListeningRef.current) setSpeechStatus("ยังไม่ได้ยินเสียง ระบบกำลังเปิดฟังต่อให้อัตโนมัติ…");
+        return;
+      }
+
+      shouldKeepListeningRef.current = false;
       setSpeechError(errorMessages[event.error] ?? "ไม่สามารถเปลี่ยนเสียงเป็นข้อความได้ กรุณาลองใหม่หรือพิมพ์แทน");
+      setSpeechStatus("");
       setIsListening(false);
     };
     recognition.onend = () => {
-      setIsListening(false);
-      recognitionRef.current = null;
+      if (recognitionRef.current === recognition) recognitionRef.current = null;
+
+      if (shouldKeepListeningRef.current) {
+        setSpeechStatus("เบราว์เซอร์ตัดช่วงเสียง ระบบกำลังเปิดฟังต่อให้อัตโนมัติ…");
+        restartSpeechTimerRef.current = window.setTimeout(() => {
+          startRecognitionSession(Recognition, processLocally);
+        }, 300);
+      } else {
+        setIsListening(false);
+      }
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      shouldKeepListeningRef.current = false;
+      recognitionRef.current = null;
+      setIsListening(false);
+      setSpeechStatus("");
+      setSpeechError("เปิดการฟังต่อเนื่องไม่สำเร็จ กรุณาลองใหม่หรือพิมพ์แทน");
+    }
+  }
+
+  function stopSpeechInput() {
+    shouldKeepListeningRef.current = false;
+    if (restartSpeechTimerRef.current !== null) {
+      window.clearTimeout(restartSpeechTimerRef.current);
+      restartSpeechTimerRef.current = null;
+    }
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setIsListening(false);
+    setSpeechStatus("หยุดรับเสียงแล้ว");
+  }
+
+  async function toggleSpeechInput() {
+    if (shouldKeepListeningRef.current || isListening) {
+      stopSpeechInput();
+      return;
+    }
+
+    const microphoneAllowed = await requestMicrophoneAccess();
+    if (!microphoneAllowed) return;
+
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!Recognition) {
+      setSpeechError("อนุญาตไมโครโฟนแล้ว แต่เบราว์เซอร์นี้ยังแปลงเสียงภาษาไทยเป็นข้อความไม่ได้ กรุณาเปิดหน้านี้ใน Chrome หรือ Edge");
+      return;
+    }
+
+    setIsRequestingMicrophone(true);
+    const processLocally = await canProcessSpeechOnDevice(Recognition);
+    setIsRequestingMicrophone(false);
+    setSpeechProcessingMode(processLocally ? "device" : "network");
+
+    if (!processLocally && !navigator.onLine) {
+      setSpeechError("ขณะนี้ไม่มีอินเทอร์เน็ต และอุปกรณ์นี้ยังไม่มีชุดภาษาไทยสำหรับแปลงเสียงในเครื่อง กรุณาพิมพ์ข้อความแทน");
+      setSpeechStatus("");
+      return;
+    }
+
+    shouldKeepListeningRef.current = true;
+    startRecognitionSession(Recognition, processLocally);
   }
 
   function handleSpeechButton() {
     setSpeechError("");
     void toggleSpeechInput();
+  }
+
+  async function handleStoryAssistance() {
+    const normalizedStory = story.trim();
+    if (normalizedStory.length < 20) return;
+
+    setAssistanceError("");
+    setAssistanceResult(null);
+
+    if (assistanceMode === "rules") {
+      setAssistanceResult(createRuleBasedStoryAssistance(normalizedStory));
+      return;
+    }
+
+    if (!aiConsent) {
+      setAssistanceError("กรุณายืนยันก่อนส่งข้อความไปให้ AI ช่วยเรียบเรียง");
+      return;
+    }
+
+    setIsAnalyzingStory(true);
+    const fallback = createRuleBasedStoryAssistance(normalizedStory);
+
+    try {
+      if (isStaticPublicDemo) throw new Error("static-demo");
+      if (!navigator.onLine) throw new Error("offline");
+
+      const response = await fetch("/api/ai/story-assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ story: normalizedStory, consent: true }),
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as { data?: StoryAssistanceResult; error?: string };
+      if (!response.ok || !payload.data) throw new Error(payload.error ?? "ai-unavailable");
+      setAssistanceResult(payload.data);
+    } catch (error) {
+      setAssistanceResult(fallback);
+      const reason = error instanceof Error ? error.message : "";
+      setAssistanceError(
+        reason === "offline"
+          ? "ไม่มีอินเทอร์เน็ต จึงเปลี่ยนมาใช้รายการตรวจสอบในเครื่องให้โดยอัตโนมัติ"
+          : isStaticPublicDemo
+            ? "เว็บสาธิตนี้ทำงานแบบไม่ใช้ AI จึงใช้รายการตรวจสอบในเครื่องให้โดยอัตโนมัติ"
+            : "AI ยังไม่พร้อมใช้งาน จึงใช้รายการตรวจสอบในเครื่องให้โดยอัตโนมัติ",
+      );
+    } finally {
+      setIsAnalyzingStory(false);
+    }
   }
 
   async function copyCurrentPageLink() {
@@ -428,11 +576,12 @@ export function PrivacyFirstWorkflow() {
                                 href={channel.href}
                                 target={channel.href.startsWith("http") ? "_blank" : undefined}
                                 rel={channel.href.startsWith("http") ? "noreferrer" : undefined}
+                                aria-label={channel.href.startsWith("tel:") ? `${channel.label} เปิดหน้าจอโทรศัพท์พร้อมหมายเลข` : undefined}
                                 className={`inline-flex min-h-10 items-center border px-3 py-2 text-sm font-bold no-underline ${
                                   channel.urgent ? "border-coral bg-coral text-white" : "border-river bg-white text-river"
                                 }`}
                               >
-                                {channel.label}
+                                {channel.href.startsWith("tel:") ? "☎ " : ""}{channel.label}
                               </a>
                             ) : (
                               <span key={channel.label} className="inline-flex min-h-10 items-center border border-coral bg-[#fff0ed] px-3 py-2 text-sm font-bold text-coral">
@@ -488,6 +637,65 @@ export function PrivacyFirstWorkflow() {
                 <span className="shrink-0 bg-[#e9f4f2] px-3 py-1.5 text-xs font-bold text-river">อยู่ในเครื่องนี้เท่านั้น</span>
               </div>
 
+              <fieldset className="mt-7 border border-line bg-paper p-4 sm:p-5">
+                <legend className="px-2 text-sm font-bold text-ink">เลือกวิธีช่วยจัดเรื่อง</legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className={`cursor-pointer border p-4 ${assistanceMode === "rules" ? "border-river bg-[#e9f4f2]" : "border-line bg-white"}`}>
+                    <span className="flex items-start gap-3">
+                      <input
+                        type="radio"
+                        name="assistance-mode"
+                        value="rules"
+                        checked={assistanceMode === "rules"}
+                        onChange={() => {
+                          setAssistanceMode("rules");
+                          setAssistanceResult(null);
+                          setAssistanceError("");
+                        }}
+                        className="mt-1 h-4 w-4 accent-river"
+                      />
+                      <span>
+                        <strong className="block text-sm text-ink">ไม่ใช้ AI — แนะนำ</strong>
+                        <span className="mt-1 block text-xs leading-5 text-ink-soft">ตรวจข้อมูลในเครื่อง ใช้ต่อได้เมื่อออฟไลน์ และไม่ส่งเรื่องออกจากเครื่อง</span>
+                      </span>
+                    </span>
+                  </label>
+                  <label className={`cursor-pointer border p-4 ${assistanceMode === "ai" ? "border-saffron bg-[#fff8e8]" : "border-line bg-white"}`}>
+                    <span className="flex items-start gap-3">
+                      <input
+                        type="radio"
+                        name="assistance-mode"
+                        value="ai"
+                        checked={assistanceMode === "ai"}
+                        onChange={() => {
+                          setAssistanceMode("ai");
+                          setAssistanceResult(null);
+                          setAssistanceError("");
+                        }}
+                        className="mt-1 h-4 w-4 accent-river"
+                      />
+                      <span>
+                        <strong className="block text-sm text-ink">ใช้ AI ช่วยเรียบเรียง</strong>
+                        <span className="mt-1 block text-xs leading-5 text-ink-soft">ต้องมีอินเทอร์เน็ต AI ช่วยจัดภาษาเท่านั้น กฎที่ตรวจสอบแล้วเป็นผู้เลือกสิทธิและหน่วยงาน</span>
+                      </span>
+                    </span>
+                  </label>
+                </div>
+                {assistanceMode === "ai" && (
+                  <label className="mt-4 flex cursor-pointer items-start gap-3 border-l-4 border-saffron bg-white p-4 text-xs leading-5 text-ink">
+                    <input
+                      type="checkbox"
+                      checked={aiConsent}
+                      onChange={(event) => setAiConsent(event.target.checked)}
+                      className="mt-1 h-4 w-4 shrink-0 accent-river"
+                    />
+                    <span>
+                      ฉันยินยอมให้ส่งข้อความที่เล่าไปยัง Cloudflare Workers AI เพื่อประมวลผลชั่วคราว แอปไม่บันทึกข้อความลงฐานข้อมูล และไม่ควรใส่เลขบัตร รหัสผ่าน หรือข้อมูลเกินจำเป็น
+                    </span>
+                  </label>
+                )}
+              </fieldset>
+
               <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <label htmlFor="story" className="block text-base font-bold text-ink">
                   เล่าตามที่จำได้ ไม่ต้องใช้ภาษากฎหมาย
@@ -510,9 +718,9 @@ export function PrivacyFirstWorkflow() {
                     <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
                   </svg>
                   {isListening
-                    ? "หยุดฟัง"
+                    ? "หยุดเล่าด้วยเสียง"
                     : isRequestingMicrophone
-                      ? "กำลังขออนุญาต…"
+                      ? "กำลังเตรียมไมโครโฟน…"
                       : "เล่าด้วยเสียง"}
                 </button>
               </div>
@@ -521,9 +729,15 @@ export function PrivacyFirstWorkflow() {
               </p>
               <p id="speech-help" className="mt-1 text-xs leading-5 text-ink-soft">
                 {isListening
-                  ? "กำลังฟังและเติมคำพูดลงในช่องด้านล่าง กด “หยุดฟัง” เมื่อเล่าจบ"
+                  ? "กำลังฟังต่อเนื่องและเติมคำพูดลงในช่องด้านล่าง หากเบราว์เซอร์ตัดช่วงเสียง ระบบจะเปิดฟังต่อให้เอง กด “หยุดเล่าด้วยเสียง” เมื่อเล่าจบ"
                   : "กดเล่าด้วยเสียงเมื่อพร้อม ระบบจะขอใช้ไมโครโฟนในตอนนั้น"}
               </p>
+              {speechStatus && (
+                <p className="mt-2 text-xs font-semibold leading-5 text-river" role="status" aria-live="polite">
+                  {speechStatus}
+                  {speechProcessingMode === "device" ? " — ใช้ได้โดยไม่ส่งเสียงไปบริการออนไลน์" : speechProcessingMode === "network" ? " — ต้องใช้อินเทอร์เน็ต" : ""}
+                </p>
+              )}
               {speechError && (
                 <p className="mt-3 border-l-4 border-coral bg-[#fff0ed] px-4 py-3 text-sm leading-6 text-ink" role="alert">
                   <strong className="block">เปิดไมโครโฟนไม่สำเร็จ</strong>
@@ -584,10 +798,47 @@ export function PrivacyFirstWorkflow() {
                 )}
               </div>
 
+              {(assistanceError || assistanceResult) && (
+                <section className="mt-6 border border-line bg-white p-5" aria-live="polite">
+                  {assistanceError && <p className="mb-4 border-l-4 border-saffron bg-[#fff8e8] p-3 text-sm leading-6 text-ink">{assistanceError}</p>}
+                  {assistanceResult && (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-lg font-bold text-ink">สรุปเรื่องที่ระบบเข้าใจ</h3>
+                        <span className="bg-paper px-3 py-1 text-xs font-bold text-river">{assistanceResult.mode === "ai" ? "AI ช่วยเรียบเรียง" : "รายการตรวจสอบในเครื่อง"}</span>
+                      </div>
+                      <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-ink">{assistanceResult.summary}</p>
+                      <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                        <div>
+                          <h4 className="text-sm font-bold text-ink">ข้อมูลที่พบแล้ว</h4>
+                          {assistanceResult.capturedFields.length > 0 ? (
+                            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-ink-soft">
+                              {assistanceResult.capturedFields.map((field) => <li key={field}>{field}</li>)}
+                            </ul>
+                          ) : <p className="mt-2 text-sm text-ink-soft">ยังไม่พบหัวข้อสำคัญชัดเจน</p>}
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-ink">คำถามที่ควรตอบเพิ่ม</h4>
+                          {assistanceResult.missingQuestions.length > 0 ? (
+                            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-ink-soft">
+                              {assistanceResult.missingQuestions.map((question) => <li key={question}>{question}</li>)}
+                            </ul>
+                          ) : <p className="mt-2 text-sm text-ink-soft">ข้อมูลพื้นฐานครบตามรายการตรวจสอบแล้ว</p>}
+                        </div>
+                      </div>
+                      <p className="mt-5 text-xs leading-5 text-ink-soft">{assistanceResult.disclaimer}</p>
+                    </>
+                  )}
+                </section>
+              )}
+
               <aside id="privacy-note" className="mt-8 border-l-4 border-river bg-[#e9f4f2] p-5 text-sm leading-6 text-ink">
                 <strong className="block">แอปไม่บันทึกเรื่องหรือไฟล์เสียงของคุณ</strong>
                 ข้อความอยู่ในหน่วยความจำชั่วคราวและจะหายเมื่อปิดหรือโหลดหน้าใหม่ ไม่ใช้ localStorage และไม่มีระบบบัญชีผู้ใช้
-                หากใช้ไมโครโฟน เบราว์เซอร์อาจใช้บริการรู้จำเสียงของผู้ให้บริการเพื่อแปลงเสียงเป็นข้อความตามการตั้งค่าของอุปกรณ์
+                {assistanceMode === "ai"
+                  ? " เมื่อเลือก AI และยืนยัน ระบบจะส่งเฉพาะข้อความที่เล่าไปประมวลผลชั่วคราว แต่ไม่บันทึกลงฐานข้อมูลของแอป"
+                  : " โหมดนี้ตรวจรายการในเครื่องและไม่ส่งเรื่องไปให้ AI"}
+                {" "}การแปลงเสียงจะทำในเครื่องเมื่อเบราว์เซอร์รองรับ มิฉะนั้นเบราว์เซอร์อาจใช้บริการออนไลน์ของผู้ให้บริการ
               </aside>
 
               <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -600,11 +851,12 @@ export function PrivacyFirstWorkflow() {
                 </button>
                 <button
                   type="button"
-                  disabled={story.trim().length < 20}
+                  onClick={() => void handleStoryAssistance()}
+                  disabled={story.trim().length < 20 || isAnalyzingStory || (assistanceMode === "ai" && !aiConsent)}
                   className="min-h-12 bg-ink px-7 py-3 font-bold text-white transition hover:bg-river disabled:cursor-not-allowed disabled:bg-[#b8c3c5]"
                   title="ขั้นถัดไปคือการจัดลำดับข้อเท็จจริงและถามข้อมูลที่ขาด"
                 >
-                  จัดลำดับข้อเท็จจริง →
+                  {isAnalyzingStory ? "กำลังจัดเรื่อง…" : "จัดลำดับข้อเท็จจริง →"}
                 </button>
               </div>
             </>
@@ -616,6 +868,7 @@ export function PrivacyFirstWorkflow() {
         <p>รุ่นตั้งต้นสำหรับพัฒนาและทดสอบกับผู้ใช้ — ยังไม่ใช่คำปรึกษากฎหมาย</p>
         <p className="sm:text-right">ความรู้มาจากแหล่งทางการและต้องผ่านการตรวจทานก่อนเผยแพร่</p>
       </footer>
+      <EmergencyShortcut />
     </div>
   );
 }

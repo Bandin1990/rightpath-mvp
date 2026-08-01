@@ -28,13 +28,17 @@
 - สร้าง Word/PDF ใน browser และให้ผู้ใช้ตรวจ/ดาวน์โหลดเอง
 - ไม่ติดตั้ง session replay, ad tracker หรือ analytics ที่อ่านข้อความ
 - Metrics อนุญาตเฉพาะจำนวนรวม latency, status code, rule ID แบบไม่ผูกบุคคล และ token aggregate
-- Provider AI ในอนาคตต้องเปิด zero-retention/no-training ตามสัญญา และส่งข้อมูลขั้นต่ำเท่านั้น
+- AI เป็น opt-in แยกจากโหมดพื้นฐาน ผู้ใช้ต้องยินยอมก่อนส่งข้อความทุกครั้ง และระบบต้องส่งข้อมูลขั้นต่ำเท่านั้น
+- Cloudflare Workers AI เป็น provider ตั้งต้น โดยตรวจเงื่อนไข no-training/data usage ก่อน production และห้ามเก็บ prompt/output ใน application storage หรือ logs
+- Service worker/Cache Storage cache ได้เฉพาะไฟล์ static ของแอป ห้าม cache POST, API AI, เรื่องเล่า หรือผลลัพธ์เฉพาะบุคคล
 
 ### การเล่าปัญหาด้วยเสียง
 
 - ขอสิทธิ์ใช้ไมโครโฟนต่อเมื่อผู้ใช้กด “เล่าด้วยเสียง” เท่านั้น
 - แอปไม่บันทึกไฟล์เสียงลงฐานข้อมูล log, object storage หรือ browser storage
 - ระบบรู้จำเสียงของเบราว์เซอร์อาจประมวลผลเสียงบนอุปกรณ์หรือผ่านบริการของผู้ให้บริการ ขึ้นอยู่กับเบราว์เซอร์และการตั้งค่าของอุปกรณ์ จึงต้องแจ้งผู้ใช้ก่อนเริ่มใช้งาน
+- หากเบราว์เซอร์รองรับ `processLocally` ให้ตรวจ/ติดตั้งชุดภาษาไทยในเครื่องก่อน โดยถือว่าความสามารถนี้เป็น progressive enhancement และต้อง fallback ไปการพิมพ์เสมอ
+- เมื่อ speech service จบ session เอง ระบบเริ่ม session ใหม่เฉพาะระหว่างที่ผู้ใช้ยังเปิดสถานะฟังอยู่ และหยุด retry ทันทีเมื่อถูกปฏิเสธสิทธิ ไม่พบไมโครโฟน ภาษาไม่รองรับ หรือเครือข่ายล้มเหลว
 - ข้อความที่ถอดจากเสียงอยู่ใน React memory เท่านั้น และหายเมื่อปิดหรือโหลดหน้าใหม่
 - ต้องมีการพิมพ์เป็นทางเลือกที่ใช้งานได้ครบ หากเบราว์เซอร์ไม่รองรับหรือผู้ใช้ไม่อนุญาตไมโครโฟน
 
@@ -85,12 +89,14 @@ MVP มี route `/admin` แยกจาก workflow ประชาชน ใ�
 
 ## AI controls
 
+- `/api/ai/story-assist` ปิดโดยค่าเริ่มต้นด้วย `AI_ASSIST_ENABLED=false`; เปิดได้หลัง WAF/rate limit/body/token limit และ budget alert พร้อมแล้ว
 - Model ไม่มีสิทธิเลือก/แก้ routing rules หรือส่งคำร้อง
 - Retrieved content เป็นข้อมูล ไม่ใช่ instruction
 - system prompt คงที่และ versioned; tool allow-list; ไม่มี arbitrary URL/file execution
 - context มีเฉพาะ facts ที่จำเป็นและ source-backed snippets
 - ตรวจ output หลัง generation และ fail closed เมื่อ citation/route ไม่ตรง
 - red-team direct/indirect prompt injection, data exfiltration และ denial-of-wallet ก่อนเปิดใช้
+- ถ้า AI/offline/provider ล้มเหลว ให้ fallback เป็นรายการตรวจสอบใน browser โดยไม่ส่งซ้ำอัตโนมัติ
 
 ## Secrets และ deployment
 
