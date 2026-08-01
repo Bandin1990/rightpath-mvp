@@ -32,6 +32,8 @@
 
 ตัว Worker ใช้ Rate Limiting binding ชื่อ `AI_RATE_LIMITER` ก่อนอ่าน request body โดยแฮช `CF-Connecting-IP` ก่อนใช้เป็น key ค่า 10 ครั้งต่อนาทีเป็นเพียง pilot baseline และ counter มีขอบเขตต่อ Cloudflare location จึงไม่ใช่ระบบบัญชีที่แม่นยำ ต้องเสริม WAF rule และ budget alert ก่อนรับ traffic จำนวนมาก
 
+`/api/ai/story-assist` จำกัด body 32 KB และตรวจซ้ำใน Worker โดยรับเรื่องเล่าสูงสุด 5,000 ตัวอักษรกับคำตอบคำถามตายตัวสูงสุดคำตอบละ 400 ตัวอักษร ไม่รับไฟล์ ชื่อผู้ใช้ หรือข้อมูลสำหรับลงนามในหนังสือ
+
 ## Custom rules intent
 
 1. Block methods ที่ endpoint ไม่รองรับ

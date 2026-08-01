@@ -10,10 +10,12 @@ import {
 } from "@/lib/emergency-guidance";
 import { classifyEmergencyText, emergencyThreatKeywords } from "@/lib/emergency-classifier";
 import { EmergencyShortcut } from "@/components/emergency-shortcut";
+import { StoryInterview } from "@/components/story-interview";
 import {
   createRuleBasedStoryAssistance,
   type AssistanceMode,
   type StoryAssistanceResult,
+  type StoryFollowUpAnswer,
 } from "@/lib/story-assistance";
 
 const isStaticPublicDemo = process.env.NEXT_PUBLIC_STATIC_PUBLIC_DEMO === "true";
@@ -92,6 +94,8 @@ export function PrivacyFirstWorkflow() {
   const [assistanceMode, setAssistanceMode] = useState<AssistanceMode>("rules");
   const [aiConsent, setAiConsent] = useState(false);
   const [assistanceResult, setAssistanceResult] = useState<StoryAssistanceResult | null>(null);
+  const [confirmedFollowUpAnswers, setConfirmedFollowUpAnswers] = useState<StoryFollowUpAnswer[]>([]);
+  const [interviewRound, setInterviewRound] = useState(0);
   const [assistanceError, setAssistanceError] = useState("");
   const [isAnalyzingStory, setIsAnalyzingStory] = useState(false);
   const [emergencyCatalog, setEmergencyCatalog] = useState<EmergencyCatalog>({
@@ -103,7 +107,11 @@ export function PrivacyFirstWorkflow() {
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const shouldKeepListeningRef = useRef(false);
   const restartSpeechTimerRef = useRef<number | null>(null);
-  const activeStep = emergencyStatus === "safe" ? 1 : 0;
+  const activeStep = emergencyStatus !== "safe"
+    ? 0
+    : assistanceResult
+      ? 2
+      : 1;
   const selectedThreatIdSet = new Set(selectedThreatIds);
   const selectedThreats = emergencyCatalog.threatGroups
     .flatMap((group) => group.threats)
@@ -135,6 +143,18 @@ export function PrivacyFirstWorkflow() {
       recognitionRef.current?.stop();
     };
   }, []);
+
+  function resetStoryAssistance() {
+    setAssistanceResult(null);
+    setConfirmedFollowUpAnswers([]);
+    setInterviewRound(0);
+    setAssistanceError("");
+  }
+
+  function updateStory(nextStory: string) {
+    setStory(nextStory.slice(0, 5000));
+    resetStoryAssistance();
+  }
 
   useEffect(() => {
     if (isStaticPublicDemo || !navigator.onLine) return;
@@ -233,6 +253,7 @@ export function PrivacyFirstWorkflow() {
 
       const spokenText = transcript.trim();
       if (spokenText) {
+        resetStoryAssistance();
         setStory((currentStory) => `${currentStory}${currentStory.trim() ? " " : ""}${spokenText}`.slice(0, 5000));
       }
     };
@@ -328,12 +349,29 @@ export function PrivacyFirstWorkflow() {
     void toggleSpeechInput();
   }
 
+  async function fetchAiStoryAssistance(normalizedStory: string, followUpAnswers: StoryFollowUpAnswer[]) {
+    if (isStaticPublicDemo) throw new Error("static-demo");
+    if (!navigator.onLine) throw new Error("offline");
+
+    const response = await fetch("/api/ai/story-assist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ story: normalizedStory, consent: true, followUpAnswers }),
+      cache: "no-store",
+    });
+    const payload = (await response.json()) as { data?: StoryAssistanceResult; error?: string };
+    if (!response.ok || !payload.data) throw new Error(payload.error ?? "ai-unavailable");
+    return payload.data;
+  }
+
   async function handleStoryAssistance() {
     const normalizedStory = story.trim();
     if (normalizedStory.length < 20) return;
 
     setAssistanceError("");
     setAssistanceResult(null);
+    setConfirmedFollowUpAnswers([]);
+    setInterviewRound(0);
 
     if (assistanceMode === "rules") {
       setAssistanceResult(createRuleBasedStoryAssistance(normalizedStory));
@@ -349,18 +387,9 @@ export function PrivacyFirstWorkflow() {
     const fallback = createRuleBasedStoryAssistance(normalizedStory);
 
     try {
-      if (isStaticPublicDemo) throw new Error("static-demo");
-      if (!navigator.onLine) throw new Error("offline");
-
-      const response = await fetch("/api/ai/story-assist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ story: normalizedStory, consent: true }),
-        cache: "no-store",
-      });
-      const payload = (await response.json()) as { data?: StoryAssistanceResult; error?: string };
-      if (!response.ok || !payload.data) throw new Error(payload.error ?? "ai-unavailable");
-      setAssistanceResult(payload.data);
+      const result = await fetchAiStoryAssistance(normalizedStory, []);
+      setAssistanceResult(result);
+      setInterviewRound(1);
     } catch (error) {
       setAssistanceResult(fallback);
       const reason = error instanceof Error ? error.message : "";
@@ -370,6 +399,33 @@ export function PrivacyFirstWorkflow() {
           : isStaticPublicDemo
             ? "เว็บสาธิตนี้ทำงานแบบไม่ใช้ AI จึงใช้รายการตรวจสอบในเครื่องให้โดยอัตโนมัติ"
             : "AI ยังไม่พร้อมใช้งาน จึงใช้รายการตรวจสอบในเครื่องให้โดยอัตโนมัติ",
+      );
+    } finally {
+      setIsAnalyzingStory(false);
+    }
+  }
+
+  async function handleFollowUpReview(roundAnswers: StoryFollowUpAnswer[]) {
+    const normalizedStory = story.trim();
+    const mergedAnswersByQuestion = new Map(
+      [...confirmedFollowUpAnswers, ...roundAnswers].map((answer) => [answer.questionId, answer]),
+    );
+    const mergedAnswers = Array.from(mergedAnswersByQuestion.values());
+
+    setAssistanceError("");
+    setIsAnalyzingStory(true);
+
+    try {
+      const result = await fetchAiStoryAssistance(normalizedStory, mergedAnswers);
+      setConfirmedFollowUpAnswers(mergedAnswers.filter((answer) => answer.status !== "skipped"));
+      setAssistanceResult(result);
+      setInterviewRound((currentRound) => currentRound + 1);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "";
+      setAssistanceError(
+        reason === "offline"
+          ? "ไม่มีอินเทอร์เน็ต คำตอบยังอยู่ในหน่วยความจำของหน้านี้ กรุณาเชื่อมต่อแล้วกดตรวจอีกครั้ง"
+          : "AI ยังตรวจคำตอบรอบนี้ไม่ได้ คำตอบยังอยู่ในหน่วยความจำของหน้านี้และยังไม่ถูกบันทึก",
       );
     } finally {
       setIsAnalyzingStory(false);
@@ -649,8 +705,7 @@ export function PrivacyFirstWorkflow() {
                         checked={assistanceMode === "rules"}
                         onChange={() => {
                           setAssistanceMode("rules");
-                          setAssistanceResult(null);
-                          setAssistanceError("");
+                          resetStoryAssistance();
                         }}
                         className="mt-1 h-4 w-4 accent-river"
                       />
@@ -669,8 +724,7 @@ export function PrivacyFirstWorkflow() {
                         checked={assistanceMode === "ai"}
                         onChange={() => {
                           setAssistanceMode("ai");
-                          setAssistanceResult(null);
-                          setAssistanceError("");
+                          resetStoryAssistance();
                         }}
                         className="mt-1 h-4 w-4 accent-river"
                       />
@@ -690,7 +744,7 @@ export function PrivacyFirstWorkflow() {
                       className="mt-1 h-4 w-4 shrink-0 accent-river"
                     />
                     <span>
-                      ฉันยินยอมให้ส่งข้อความที่เล่าไปยัง Cloudflare Workers AI เพื่อประมวลผลชั่วคราว แอปไม่บันทึกข้อความลงฐานข้อมูล และไม่ควรใส่เลขบัตร รหัสผ่าน หรือข้อมูลเกินจำเป็น
+                      ฉันยินยอมให้ส่งข้อความที่เล่าและคำตอบเพิ่มเติมไปยัง Cloudflare Workers AI เพื่อประมวลผลชั่วคราว แอปไม่บันทึกข้อความลงฐานข้อมูล และไม่ควรใส่เลขบัตร รหัสผ่าน หรือข้อมูลเกินจำเป็น
                     </span>
                   </label>
                 )}
@@ -785,14 +839,14 @@ export function PrivacyFirstWorkflow() {
                 id="story"
                 aria-describedby="story-help privacy-note"
                 value={story}
-                onChange={(event) => setStory(event.target.value.slice(0, 5000))}
+                onChange={(event) => updateStory(event.target.value)}
                 placeholder="เช่น เมื่อสัปดาห์ก่อนมีเจ้าหน้าที่..."
                 className="mt-5 min-h-64 w-full resize-y border border-line bg-[#fbfcfa] p-5 text-lg leading-8 text-ink placeholder:text-[#8ba0a5] focus:border-river focus:outline-none"
               />
               <div className="mt-2 flex items-center justify-between text-xs text-ink-soft">
                 <span>{story.length} / 5,000 ตัวอักษร</span>
                 {story.length > 0 && (
-                  <button type="button" onClick={() => setStory("")} className="font-bold text-coral underline underline-offset-4">
+                  <button type="button" onClick={() => updateStory("")} className="font-bold text-coral underline underline-offset-4">
                     ลบข้อความทั้งหมด
                   </button>
                 )}
@@ -826,17 +880,40 @@ export function PrivacyFirstWorkflow() {
                           ) : <p className="mt-2 text-sm text-ink-soft">ข้อมูลพื้นฐานครบตามรายการตรวจสอบแล้ว</p>}
                         </div>
                       </div>
+                      <div className={`mt-5 border-l-4 p-4 ${assistanceResult.readiness.readyForReview ? "border-river bg-[#e9f4f2]" : "border-saffron bg-[#fff8e8]"}`}>
+                        <p className="text-sm font-bold text-ink">
+                          {assistanceResult.readiness.readyForReview
+                            ? "ข้อมูลพร้อมให้คุณตรวจทานก่อนเข้าสู่การวิเคราะห์สิทธิและร่างหนังสือ"
+                            : "ยังมีข้อมูลสำคัญที่ควรถามเพิ่มก่อนวิเคราะห์และร่างหนังสือ"}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-ink-soft">
+                          พบข้อมูลแล้ว {assistanceResult.readiness.capturedCount} จาก {assistanceResult.readiness.totalCount} หัวข้อ
+                          {assistanceResult.readiness.unavailableCount > 0 ? ` · ระบุว่าไม่ทราบ ${assistanceResult.readiness.unavailableCount} หัวข้อ` : ""}
+                        </p>
+                        {assistanceResult.unavailableFields.length > 0 && (
+                          <p className="mt-2 text-xs leading-5 text-ink-soft">ข้อมูลที่ยังไม่ทราบ: {assistanceResult.unavailableFields.join(" · ")}</p>
+                        )}
+                      </div>
                       <p className="mt-5 text-xs leading-5 text-ink-soft">{assistanceResult.disclaimer}</p>
                     </>
                   )}
                 </section>
               )}
 
+              {assistanceResult?.mode === "ai" && assistanceResult.followUpQuestions.length > 0 && (
+                <StoryInterview
+                  key={interviewRound}
+                  questions={assistanceResult.followUpQuestions}
+                  isReviewing={isAnalyzingStory}
+                  onReview={(answers) => void handleFollowUpReview(answers)}
+                />
+              )}
+
               <aside id="privacy-note" className="mt-8 border-l-4 border-river bg-[#e9f4f2] p-5 text-sm leading-6 text-ink">
                 <strong className="block">แอปไม่บันทึกเรื่องหรือไฟล์เสียงของคุณ</strong>
                 ข้อความอยู่ในหน่วยความจำชั่วคราวและจะหายเมื่อปิดหรือโหลดหน้าใหม่ ไม่ใช้ localStorage และไม่มีระบบบัญชีผู้ใช้
                 {assistanceMode === "ai"
-                  ? " เมื่อเลือก AI และยืนยัน ระบบจะส่งเฉพาะข้อความที่เล่าไปประมวลผลชั่วคราว แต่ไม่บันทึกลงฐานข้อมูลของแอป"
+                  ? " เมื่อเลือก AI และยืนยัน ระบบจะส่งข้อความที่เล่าและคำตอบเพิ่มเติมไปประมวลผลชั่วคราว แต่ไม่บันทึกลงฐานข้อมูลของแอป ข้อมูลระบุตัวบุคคลสำหรับหนังสือจะกรอกในเบราว์เซอร์ภายหลังและไม่ส่งให้ AI"
                   : " โหมดนี้ตรวจรายการในเครื่องและไม่ส่งเรื่องไปให้ AI"}
                 {" "}การแปลงเสียงจะทำในเครื่องเมื่อเบราว์เซอร์รองรับ มิฉะนั้นเบราว์เซอร์อาจใช้บริการออนไลน์ของผู้ให้บริการ
               </aside>
@@ -856,7 +933,7 @@ export function PrivacyFirstWorkflow() {
                   className="min-h-12 bg-ink px-7 py-3 font-bold text-white transition hover:bg-river disabled:cursor-not-allowed disabled:bg-[#b8c3c5]"
                   title="ขั้นถัดไปคือการจัดลำดับข้อเท็จจริงและถามข้อมูลที่ขาด"
                 >
-                  {isAnalyzingStory ? "กำลังจัดเรื่อง…" : "จัดลำดับข้อเท็จจริง →"}
+                  {isAnalyzingStory ? "กำลังจัดเรื่อง…" : assistanceResult ? "เริ่มตรวจเรื่องใหม่" : "จัดลำดับข้อเท็จจริง →"}
                 </button>
               </div>
             </>

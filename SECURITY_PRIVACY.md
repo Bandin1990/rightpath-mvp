@@ -91,6 +91,9 @@ MVP มี route `/admin` แยกจาก workflow ประชาชน ใ�
 
 - `/api/ai/story-assist` เปิดเฉพาะบน Cloudflare Worker ที่มี `AI`, `AI_RATE_LIMITER`, body/token limit และปิด invocation logs; หาก binding ใดขาดให้ fail closed
 - rate-limit key ใช้ค่า `CF-Connecting-IP` ที่แฮชแล้ว ไม่เก็บหรือลง log และจำกัด 10 ครั้งต่อนาทีต่อ Cloudflare location; ต้องติดตาม false positive จากเครือข่ายมือถือ/NAT
+- Rule engine เป็นผู้ตรวจหัวข้อที่ขาดและเลือกคำถามจาก question catalog ที่กำหนดไว้ล่วงหน้า AI ไม่มีสิทธิเลือกหรือสร้างคำถาม จึงไม่แสดงคำถามอิสระจากโมเดล
+- จำกัด request 32 KB, เนื้อหา JSON 10,500 ตัวอักษร, เรื่องเล่า 5,000 ตัวอักษร, คำตอบละ 400 ตัวอักษร และไม่รับไฟล์หรือหลักฐานที่ endpoint นี้
+- ชื่อ ที่อยู่ ข้อมูลติดต่อ เลขประจำตัว และลายมือชื่อสำหรับหนังสือต้องกรอกภายใน browser ภายหลัง ไม่ส่งให้ AI และไม่รวมในฐานข้อมูลแอป
 - `AI_ASSIST_ENABLED=false` เป็น circuit breaker สำหรับหยุด AI โดยไม่ปิด workflow แบบกฎ
 - Model ไม่มีสิทธิเลือก/แก้ routing rules หรือส่งคำร้อง
 - Retrieved content เป็นข้อมูล ไม่ใช่ instruction
