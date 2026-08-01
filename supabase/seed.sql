@@ -1,0 +1,3 @@
+-- Intentionally empty.
+-- Import production-like knowledge only after source verification and two-person
+-- editorial review. Never seed citizen narratives or complaint drafts.
