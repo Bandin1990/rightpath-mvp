@@ -98,14 +98,12 @@ export function StoryInterview({ questions, isReviewing, onReview }: StoryInterv
           <textarea
             id={`follow-up-${currentQuestion.id}`}
             value={draft}
-            onChange={(event) => setDraft(event.target.value.slice(0, 400))}
-            maxLength={400}
+            onChange={(event) => setDraft(event.target.value)}
             placeholder="ตอบตามที่ทราบ หรือเลือกตัวเลือกด้านล่าง"
             className="mt-4 min-h-32 w-full resize-y border border-line bg-[#fbfcfa] p-4 text-base leading-7 text-ink placeholder:text-[#8ba0a5] focus:border-river focus:outline-none"
             autoFocus
           />
-          <div className="mt-2 flex justify-between text-xs text-ink-soft">
-            <span>{draft.length} / 400 ตัวอักษร</span>
+          <div className="mt-2 flex justify-end text-xs text-ink-soft">
             {validationMessage && <span className="font-semibold text-coral" role="alert">{validationMessage}</span>}
           </div>
           <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">

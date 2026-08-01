@@ -1,6 +1,6 @@
 /* global self, caches */
 
-const CACHE_NAME = "rightpath-shell-v3";
+const CACHE_NAME = "rightpath-shell-v4";
 const scopeRoot = new URL("./", self.registration.scope).href;
 const shellFiles = [
   scopeRoot,

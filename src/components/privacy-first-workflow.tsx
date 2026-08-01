@@ -23,6 +23,7 @@ import { SubmissionGuidance, type TrackingDraft } from "@/components/submission-
 import { WorkflowAiAssistant } from "@/components/workflow-ai-assistant";
 import {
   createRuleBasedStoryAssistance,
+  getStoryQuestion,
   type AssistanceMode,
   type StoryAssistanceResult,
   type StoryFollowUpAnswer,
@@ -32,10 +33,10 @@ import { suggestActionOptions, type ActionOptionId } from "@/lib/action-options"
 import {
   assessRisks,
   buildEvidenceChecklist,
-  getAgencyById,
   matchComplaintTypes,
   suggestAgencies,
   type FinalDecision,
+  type SuggestedAgency,
 } from "@/lib/workflow-guidance";
 
 const isStaticPublicDemo = process.env.NEXT_PUBLIC_STATIC_PUBLIC_DEMO === "true";
@@ -108,6 +109,7 @@ const emptyDocumentDraft: DocumentDraft = {
   subject: "",
   facts: "",
   requests: "",
+  agencyRequests: {},
   selectedEvidence: [],
 };
 
@@ -119,6 +121,23 @@ const emptyTrackingDraft: TrackingDraft = {
   followUpDate: "",
   note: "",
 };
+
+function buildDefaultAgencyRequest(agency: SuggestedAgency) {
+  const firstRequestByAgency: Record<string, string> = {
+    dlpw: "ขอให้พนักงานตรวจแรงงานรับคำร้อง ตรวจสอบข้อเท็จจริงเรื่องค่าจ้างหรือสิทธิจากการจ้างงาน และพิจารณาดำเนินการตามอำนาจ",
+    pcd: "ขอให้ตรวจสอบแหล่งกำเนิดมลพิษ ประเมินผลกระทบ และประสานหน่วยงานที่เกี่ยวข้องเพื่อแก้ไขหรือป้องกันความเสียหาย",
+    ocpb: "ขอให้รับเรื่องร้องทุกข์ ตรวจสอบข้อเท็จจริง และประสานผู้ประกอบธุรกิจเพื่อพิจารณาแก้ไขหรือเยียวยาตามอำนาจ",
+    pdpc: "ขอให้รับคำร้องเรียนและตรวจสอบการเก็บ ใช้ หรือเปิดเผยข้อมูลส่วนบุคคลของผู้ควบคุมหรือผู้ประมวลผลข้อมูลที่เกี่ยวข้อง",
+    ccib: "ขอให้รับแจ้งความ ตรวจสอบเหตุอาชญากรรมทางเทคโนโลยี และดำเนินการหรือประสานหน่วยงานที่เกี่ยวข้อง",
+    oic: "ขอให้รับเรื่องร้องเรียนหรืออุทธรณ์เกี่ยวกับคำขอข้อมูลข่าวสารของราชการ และแจ้งขั้นตอนที่ถูกต้องตามลักษณะเรื่อง",
+    ombudsman: "ขอให้ตรวจสอบการกระทำหรือการละเลยของหน่วยงานหรือเจ้าหน้าที่รัฐ และเสนอแนะแนวทางแก้ไขตามอำนาจ",
+    nhrc: "ขอให้ตรวจสอบข้อเท็จจริงว่าเหตุการณ์อาจกระทบสิทธิมนุษยชนหรือเป็นการเลือกปฏิบัติโดยไม่เป็นธรรมหรือไม่ และเสนอแนะมาตรการตามอำนาจ",
+    "government-1111": "ขอให้รับเรื่อง ส่งต่อหน่วยงานที่รับผิดชอบ และแจ้งรหัสเรื่องสำหรับติดตามผล",
+    damrongdham: "ขอให้รับเรื่องและประสานหน่วยงานจังหวัด อำเภอ หรือท้องถิ่นที่รับผิดชอบเพื่อแก้ไขปัญหา",
+    moj: "ขอให้ช่วยคัดกรอง ให้คำปรึกษา และประสานบริการช่วยเหลือทางกฎหมายหรือหน่วยงานที่เกี่ยวข้อง",
+  };
+  return `1. ${firstRequestByAgency[agency.id] ?? "ขอให้รับเรื่อง ตรวจสอบข้อเท็จจริง และดำเนินการในส่วนที่อยู่ในหน้าที่ของหน่วยงาน"}\n2. ขอให้แจ้งเลขรับเรื่อง ความคืบหน้า และผลการพิจารณาให้ข้าพเจ้าทราบ`;
+}
 
 export function PrivacyFirstWorkflow() {
   const [story, setStory] = useState("");
@@ -137,7 +156,7 @@ export function PrivacyFirstWorkflow() {
   const [assistanceResult, setAssistanceResult] = useState<StoryAssistanceResult | null>(null);
   const [workflowStage, setWorkflowStage] = useState<WorkflowStage>("story");
   const [selectedActionOptionIds, setSelectedActionOptionIds] = useState<ActionOptionId[]>([]);
-  const [selectedAgencyId, setSelectedAgencyId] = useState<string | null>(null);
+  const [selectedAgencyIds, setSelectedAgencyIds] = useState<string[]>([]);
   const [acknowledgedRiskIds, setAcknowledgedRiskIds] = useState<string[]>([]);
   const [finalDecision, setFinalDecision] = useState<FinalDecision | null>(null);
   const [documentDraft, setDocumentDraft] = useState<DocumentDraft>(emptyDocumentDraft);
@@ -178,18 +197,19 @@ export function PrivacyFirstWorkflow() {
                       ? 2
                       : 1;
   const rightsInput = [
-    story,
-    assistanceResult?.summary ?? "",
+    `เรื่องที่ผู้ใช้เล่า:\n${story}`,
+    assistanceResult?.summary ? `สรุปข้อเท็จจริงที่ตรวจทาน:\n${assistanceResult.summary}` : "",
     ...confirmedFollowUpAnswers
       .filter((answer) => answer.status === "answered")
-      .map((answer) => answer.answer),
+      .map((answer) => `${getStoryQuestion(answer.questionId)?.label ?? "ข้อมูลเพิ่มเติม"}: ${answer.answer}`),
   ].join("\n");
   const suggestedRights = suggestRights(rightsInput);
   const suggestedActionOptions = suggestActionOptions(rightsInput);
   const selectedActionOptions = suggestedActionOptions.filter((option) => selectedActionOptionIds.includes(option.id));
   const complaintTypeMatches = matchComplaintTypes(rightsInput);
   const suggestedAgencies = suggestAgencies(rightsInput, selectedActionOptionIds);
-  const selectedAgency = getAgencyById(suggestedAgencies, selectedAgencyId);
+  const selectedAgencies = suggestedAgencies.filter((agency) => selectedAgencyIds.includes(agency.id));
+  const selectedAgency = selectedAgencies[0] ?? null;
   const riskAssessments = assessRisks(rightsInput, selectedAgency);
   const evidenceChecklist = buildEvidenceChecklist(rightsInput, complaintTypeMatches);
   const shouldPromptAiConsent = assistanceMode === "ai"
@@ -231,7 +251,7 @@ export function PrivacyFirstWorkflow() {
     setWorkflowStage("story");
     setAssistanceResult(null);
     setSelectedActionOptionIds([]);
-    setSelectedAgencyId(null);
+    setSelectedAgencyIds([]);
     setAcknowledgedRiskIds([]);
     setFinalDecision(null);
     setDocumentDraft(emptyDocumentDraft);
@@ -283,7 +303,7 @@ export function PrivacyFirstWorkflow() {
   }
 
   function continueFromDecision() {
-    if (!finalDecision || !selectedAgency || !assistanceResult) return;
+    if (!finalDecision || selectedAgencies.length === 0 || !assistanceResult) return;
 
     const topicLabel = complaintTypeMatches[0]?.label ?? "ปัญหาที่ขอให้ตรวจสอบ";
     const requestText = finalDecision === "complaint"
@@ -297,6 +317,12 @@ export function PrivacyFirstWorkflow() {
       subject: currentDraft.subject || `${finalDecision === "complaint" ? "ขอให้ตรวจสอบกรณี" : finalDecision === "consult" ? "ขอคำปรึกษากรณี" : "แผนเตรียมข้อมูลกรณี"}${topicLabel}`,
       facts: currentDraft.facts || assistanceResult.summary,
       requests: currentDraft.requests || requestText,
+      agencyRequests: Object.fromEntries(selectedAgencies.map((agency) => [
+        agency.id,
+        currentDraft.agencyRequests[agency.id] || (finalDecision === "complaint"
+          ? buildDefaultAgencyRequest(agency)
+          : requestText),
+      ])),
     }));
     setWorkflowStage("document");
   }
@@ -313,7 +339,7 @@ export function PrivacyFirstWorkflow() {
   }
 
   function updateStory(nextStory: string) {
-    setStory(nextStory.slice(0, 5000));
+    setStory(nextStory);
     resetStoryAssistance();
   }
 
@@ -415,7 +441,7 @@ export function PrivacyFirstWorkflow() {
       const spokenText = transcript.trim();
       if (spokenText) {
         resetStoryAssistance();
-        setStory((currentStory) => `${currentStory}${currentStory.trim() ? " " : ""}${spokenText}`.slice(0, 5000));
+        setStory((currentStory) => `${currentStory}${currentStory.trim() ? " " : ""}${spokenText}`);
       }
     };
     recognition.onerror = (event) => {
@@ -873,28 +899,28 @@ export function PrivacyFirstWorkflow() {
                 </button>
               </div>
             </>
-          ) : workflowStage === "submission" && assistanceResult && selectedAgency && finalDecision ? (
+          ) : workflowStage === "submission" && assistanceResult && selectedAgencies.length > 0 && finalDecision ? (
             <SubmissionGuidance
               decision={finalDecision}
-              agency={selectedAgency}
+              agencies={selectedAgencies}
               tracking={trackingDraft}
               mode={assistanceMode}
               consent={aiConsent}
-              context={assistanceResult.summary}
+              context={rightsInput}
               onTrackingChange={setTrackingDraft}
               onBack={() => setWorkflowStage("document")}
               onRestart={restartWorkflow}
               onRequireConsent={requireAiConsent}
             />
-          ) : workflowStage === "document" && assistanceResult && selectedAgency && finalDecision ? (
+          ) : workflowStage === "document" && assistanceResult && selectedAgencies.length > 0 && finalDecision ? (
             <ComplaintPackageBuilder
               decision={finalDecision}
-              agency={selectedAgency}
+              agencies={selectedAgencies}
               evidenceChecklist={evidenceChecklist}
               draft={documentDraft}
               mode={assistanceMode}
               consent={aiConsent}
-              aiContext={assistanceResult.summary}
+              aiContext={rightsInput}
               onDraftChange={setDocumentDraft}
               onBack={() => setWorkflowStage("decision")}
               onContinue={() => setWorkflowStage("submission")}
@@ -903,7 +929,7 @@ export function PrivacyFirstWorkflow() {
           ) : workflowStage === "decision" && assistanceResult && selectedAgency ? (
             <DecisionGuidance
               decision={finalDecision}
-              agency={selectedAgency}
+              agencies={selectedAgencies}
               mode={assistanceMode}
               consent={aiConsent}
               context={rightsInput}
@@ -927,12 +953,14 @@ export function PrivacyFirstWorkflow() {
           ) : workflowStage === "agencies" && assistanceResult ? (
             <AgencyGuidance
               agencies={suggestedAgencies}
-              selectedAgencyId={selectedAgencyId}
+              selectedAgencyIds={selectedAgencyIds}
               mode={assistanceMode}
               consent={aiConsent}
               context={rightsInput}
-              onSelect={(agencyId) => {
-                setSelectedAgencyId(agencyId);
+              onToggle={(agencyId) => {
+                setSelectedAgencyIds((currentIds) => currentIds.includes(agencyId)
+                  ? currentIds.filter((currentId) => currentId !== agencyId)
+                  : [...currentIds, agencyId]);
                 setAcknowledgedRiskIds([]);
               }}
               onBack={() => setWorkflowStage("comparison")}
@@ -1075,7 +1103,7 @@ export function PrivacyFirstWorkflow() {
                 className="mt-5 min-h-64 w-full resize-y border border-line bg-[#fbfcfa] p-5 text-lg leading-8 text-ink placeholder:text-[#8ba0a5] focus:border-river focus:outline-none"
               />
               <div className="mt-2 flex items-center justify-between text-xs text-ink-soft">
-                <span>{story.length} / 5,000 ตัวอักษร</span>
+                <span>เล่าได้ตามความจำเป็น ไม่มีการจำกัดจำนวนตัวอักษรในช่องนี้</span>
                 {story.length > 0 && (
                   <button type="button" onClick={() => updateStory("")} className="font-bold text-coral underline underline-offset-4">
                     ลบข้อความทั้งหมด

@@ -6,11 +6,11 @@ import type { SuggestedAgency } from "@/lib/workflow-guidance";
 
 type AgencyGuidanceProps = {
   agencies: SuggestedAgency[];
-  selectedAgencyId: string | null;
+  selectedAgencyIds: string[];
   mode: AssistanceMode;
   consent: boolean;
   context: string;
-  onSelect: (agencyId: string) => void;
+  onToggle: (agencyId: string) => void;
   onBack: () => void;
   onContinue: () => void;
   onRequireConsent: () => void;
@@ -18,15 +18,16 @@ type AgencyGuidanceProps = {
 
 export function AgencyGuidance({
   agencies,
-  selectedAgencyId,
+  selectedAgencyIds,
   mode,
   consent,
   context,
-  onSelect,
+  onToggle,
   onBack,
   onContinue,
   onRequireConsent,
 }: AgencyGuidanceProps) {
+  const selectedAgencyIdSet = new Set(selectedAgencyIds);
   const grounding = agencies.flatMap((agency) => [
     `${agency.rank}: ${agency.name} — ${agency.reason}`,
     `${agency.name} ทำได้: ${agency.canDo}`,
@@ -45,22 +46,21 @@ export function AgencyGuidance({
       </div>
 
       <p className="mt-7 text-sm leading-6 text-ink-soft">
-        ระบบแสดงไม่เกิน 3 หน่วยงานจากกฎที่ตรวจสอบแล้ว เลือกหนึ่งแห่งเพื่อใช้เป็นผู้รับเอกสารหลัก คุณยังเปลี่ยนภายหลังได้ก่อนดาวน์โหลด
+        ระบบแสดงไม่เกิน 3 หน่วยงานที่ตรงกับข้อเท็จจริงที่สุด เลือกได้มากกว่าหนึ่งแห่ง ระบบจะสร้างหนังสือและแสดงช่องทางส่งแยกตามแต่ละหน่วยงาน
       </p>
 
       <fieldset className="mt-6 grid gap-4">
-        <legend className="sr-only">เลือกหน่วยงานหลัก</legend>
+        <legend className="sr-only">เลือกหน่วยงานที่ต้องการติดต่อ</legend>
         {agencies.map((agency) => {
-          const isSelected = agency.id === selectedAgencyId;
+          const isSelected = selectedAgencyIdSet.has(agency.id);
           return (
             <label key={agency.id} className={`cursor-pointer border p-5 transition ${isSelected ? "border-river bg-[#e9f4f2]" : "border-line bg-white hover:border-river"}`}>
               <span className="flex items-start gap-3">
                 <input
-                  type="radio"
-                  name="selected-agency"
+                  type="checkbox"
                   value={agency.id}
                   checked={isSelected}
-                  onChange={() => onSelect(agency.id)}
+                  onChange={() => onToggle(agency.id)}
                   className="mt-1 h-5 w-5 shrink-0 accent-river"
                 />
                 <span className="min-w-0 flex-1">
@@ -112,14 +112,14 @@ export function AgencyGuidance({
         consent={consent}
         context={context}
         grounding={grounding}
-        buttonLabel="ให้ AI ช่วยอธิบายหน่วยงาน"
+        buttonLabel="ให้ AI เทียบหน่วยงานกับเรื่องของฉัน"
         onRequireConsent={onRequireConsent}
       />
 
       <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button type="button" onClick={onBack} className="min-h-12 px-1 py-3 text-sm font-bold text-ink-soft underline underline-offset-4">← กลับไปเปรียบเทียบทางเลือก</button>
-        <button type="button" onClick={onContinue} disabled={!selectedAgencyId} className="min-h-12 bg-ink px-7 py-3 font-bold text-white hover:bg-river disabled:cursor-not-allowed disabled:bg-[#b8c3c5]">
-          {selectedAgencyId ? "ประเมินความเสี่ยง →" : "เลือกหน่วยงานหลักก่อน"}
+        <button type="button" onClick={onContinue} disabled={selectedAgencyIds.length === 0} className="min-h-12 bg-ink px-7 py-3 font-bold text-white hover:bg-river disabled:cursor-not-allowed disabled:bg-[#b8c3c5]">
+          {selectedAgencyIds.length > 0 ? `ใช้ ${selectedAgencyIds.length} หน่วยงาน แล้วประเมินความเสี่ยง →` : "เลือกอย่างน้อย 1 หน่วยงาน"}
         </button>
       </div>
     </>

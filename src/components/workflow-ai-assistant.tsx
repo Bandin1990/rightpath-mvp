@@ -81,8 +81,8 @@ export function WorkflowAiAssistant({
     <section className="mt-6 border-t-4 border-saffron bg-[#fffaf0] p-5" aria-label="AI ช่วยประมวลผลขั้นนี้">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-bold tracking-[0.12em] text-coral">AI ช่วย — ผลกฎยังเป็นหลัก</p>
-          <p className="mt-1 text-sm leading-6 text-ink-soft">AI จะใช้เฉพาะข้อเท็จจริงและผลกฎที่แสดงในขั้นนี้ ไม่สามารถเพิ่มสิทธิ หน่วยงาน เบอร์โทร หรือกำหนดเวลาเอง</p>
+          <p className="text-xs font-bold tracking-[0.12em] text-coral">AI เชื่อมคำแนะนำกับเรื่องของคุณ</p>
+          <p className="mt-1 text-sm leading-6 text-ink-soft">AI จะชี้ว่าข้อเท็จจริงส่วนใดตรงกับคำแนะนำ และบอกก้าวถัดไปเป็นภาษาง่าย โดยยังยึดสิทธิ หน่วยงาน และช่องทางที่ตรวจสอบแล้ว</p>
         </div>
         <button
           type="button"
@@ -100,9 +100,12 @@ export function WorkflowAiAssistant({
           <h3 className="text-lg font-bold text-ink">{result.title}</h3>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-ink">{result.explanation}</p>
           {result.suggestions.length > 0 && (
-            <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-ink-soft">
-              {result.suggestions.map((suggestion) => <li key={suggestion}>{suggestion}</li>)}
-            </ul>
+            <>
+              <p className="mt-4 text-xs font-bold text-river">สิ่งที่ทำต่อได้</p>
+              <ul className="mt-2 list-disc space-y-2 pl-5 text-sm leading-6 text-ink-soft">
+                {result.suggestions.map((suggestion) => <li key={suggestion}>{suggestion}</li>)}
+              </ul>
+            </>
           )}
           <p className="mt-4 border-l-4 border-saffron bg-[#fff8e8] p-3 text-xs leading-5 text-ink-soft">{result.caution}</p>
         </div>

@@ -8,6 +8,7 @@ export type ComplaintTypeId =
   | "labour"
   | "privacy-digital"
   | "fraud-cyber"
+  | "official-information"
   | "local-problem"
   | "general";
 
@@ -89,46 +90,60 @@ export const finalDecisionOptions: Array<{
 
 const verifiedAt = "2 สิงหาคม 2569";
 
-const complaintTypeRules: Array<{ id: ComplaintTypeId; label: string; keywords: string[] }> = [
+const complaintTypeRules: Array<{ id: ComplaintTypeId; label: string; keywords: string[]; strongKeywords: string[] }> = [
   {
     id: "environment",
     label: "สิ่งแวดล้อมและมลพิษ",
     keywords: ["มลพิษ", "น้ำเสีย", "ควัน", "ฝุ่น", "กลิ่น", "เสียงดัง", "โรงงาน", "สารเคมี", "ขยะ", "สิ่งแวดล้อม", "ชุมชน"],
+    strongKeywords: ["มลพิษ", "น้ำเสีย", "ปล่อยควัน", "ฝุ่นจากโรงงาน", "กลิ่นเหม็น", "สารเคมี", "ปนเปื้อน"],
   },
   {
     id: "labour",
     label: "แรงงานและการจ้างงาน",
     keywords: ["นายจ้าง", "ลูกจ้าง", "ค่าจ้าง", "เงินเดือน", "เลิกจ้าง", "แรงงาน", "วันลา", "ทำงาน", "ประกันสังคม"],
+    strongKeywords: ["นายจ้าง", "ลูกจ้าง", "ไม่จ่ายค่าจ้าง", "ค้างค่าจ้าง", "เลิกจ้าง", "ค่าล่วงเวลา", "ประกันสังคม"],
   },
   {
     id: "consumer",
     label: "ผู้บริโภค สินค้า และบริการ",
     keywords: ["สินค้า", "บริการ", "ผู้ขาย", "ร้านค้า", "ซื้อ", "สั่งซื้อ", "โฆษณา", "สัญญา", "คืนเงิน", "ผู้บริโภค"],
+    strongKeywords: ["ซื้อสินค้า", "สั่งซื้อ", "ผู้ขาย", "ร้านค้า", "คืนเงิน", "ไม่ได้รับสินค้า", "สินค้าไม่ตรงปก", "โฆษณาเกินจริง"],
   },
   {
     id: "privacy-digital",
     label: "ข้อมูลส่วนบุคคลและสิทธิออนไลน์",
     keywords: ["ข้อมูลส่วนบุคคล", "ข้อมูลส่วนตัว", "เปิดเผยข้อมูล", "เผยแพร่", "ประจาน", "รูป", "คลิป", "สวมรอย", "ปลอมบัญชี"],
+    strongKeywords: ["ข้อมูลส่วนบุคคล", "เปิดเผยข้อมูล", "เผยแพร่ข้อมูลส่วนตัว", "สวมรอย", "ปลอมบัญชี", "เผยแพร่คลิป", "เผยแพร่ภาพ"],
   },
   {
     id: "fraud-cyber",
     label: "หลอกลวงทางการเงินและอาชญากรรมออนไลน์",
     keywords: ["หลอกโอน", "โอนเงิน", "โกง", "มิจฉาชีพ", "บัญชีถูกแฮก", "แฮกบัญชี", "ดูดเงิน", "ภัยออนไลน์", "ไซเบอร์"],
+    strongKeywords: ["หลอกโอน", "มิจฉาชีพ", "บัญชีถูกแฮก", "แฮกบัญชี", "ดูดเงิน", "โกงเงิน"],
+  },
+  {
+    id: "official-information",
+    label: "การขอข้อมูลข่าวสารของราชการ",
+    keywords: ["ขอข้อมูลข่าวสาร", "ขอเอกสาร", "ไม่ให้ข้อมูล", "ปฏิเสธเปิดเผย", "ปฏิเสธข้อมูล", "หนังสือปฏิเสธ", "ข้อมูลของราชการ"],
+    strongKeywords: ["ขอข้อมูลข่าวสาร", "ขอเอกสาร", "ไม่ให้ข้อมูล", "ปฏิเสธเปิดเผย", "ไม่ตอบคำขอข้อมูล"],
   },
   {
     id: "state-action",
     label: "การกระทำหรือการละเลยของหน่วยงานรัฐ",
     keywords: ["เจ้าหน้าที่", "หน่วยงาน", "ราชการ", "รัฐ", "ตำรวจ", "เทศบาล", "อบต", "อำเภอ", "จังหวัด", "กรม", "กระทรวง", "เพิกเฉย", "ไม่รับเรื่อง"],
+    strongKeywords: ["ไม่รับเรื่อง", "เพิกเฉย", "ไม่ดำเนินการ", "ละเลยหน้าที่", "ใช้อำนาจไม่เป็นธรรม", "เจ้าหน้าที่ปฏิเสธ", "หน่วยงานไม่ตอบ"],
   },
   {
     id: "local-problem",
     label: "ความเดือดร้อนในพื้นที่",
     keywords: ["ชุมชน", "หมู่บ้าน", "ท้องถิ่น", "เทศบาล", "อบต", "อำเภอ", "จังหวัด", "ถนน", "สาธารณะ"],
+    strongKeywords: ["ปัญหาในชุมชน", "ถนนชำรุด", "ที่สาธารณะ", "เทศบาลไม่", "อบตไม่", "ร้องศูนย์ดำรงธรรม"],
   },
   {
     id: "human-rights",
     label: "สิทธิมนุษยชนและการเลือกปฏิบัติ",
     keywords: ["ละเมิดสิทธิ", "สิทธิมนุษยชน", "เลือกปฏิบัติ", "ไม่เป็นธรรม", "ข่มขู่", "ทำร้าย", "กักขัง", "คุกคาม", "เหยียด"],
+    strongKeywords: ["ละเมิดสิทธิ", "สิทธิมนุษยชน", "เลือกปฏิบัติ", "ขู่ฆ่า", "ทำร้ายร่างกาย", "กักขัง", "ทรมาน", "เหยียด"],
   },
 ];
 
@@ -148,15 +163,16 @@ const agencyCatalog: AgencyGuidance[] = [
     lastVerifiedAt: verifiedAt,
   },
   {
-    id: "mol",
-    name: "กระทรวงแรงงาน",
-    summary: "รับเรื่องร้องทุกข์และให้คำปรึกษาปัญหาด้านแรงงาน",
-    canDo: "รับเรื่องหรือส่งต่อหน่วยงานด้านค่าจ้าง การคุ้มครองแรงงาน การจ้างงาน และประกันสังคมตามประเด็น",
-    cannotDo: "ไม่ตัดสินข้อพิพาทแทนศาล และแต่ละปัญหาอาจอยู่กับหน่วยงานย่อยต่างกัน",
+    id: "dlpw",
+    name: "กรมสวัสดิการและคุ้มครองแรงงาน",
+    summary: "รับคำร้องเกี่ยวกับค่าจ้าง ค่าล่วงเวลา วันลา สภาพการทำงาน และการเลิกจ้าง",
+    canDo: "ให้คำปรึกษา รับคำร้อง และให้พนักงานตรวจแรงงานตรวจข้อเท็จจริงหรือออกคำสั่งตามอำนาจในปัญหาคุ้มครองแรงงาน",
+    cannotDo: "ปัญหาประกันสังคม การจัดหางาน หรือข้อพิพาทที่ต้องฟ้องศาลอาจต้องใช้หน่วยงานหรือกระบวนการอื่น",
     complaintTypes: ["labour"],
     channels: [
-      { type: "phone", label: "โทร 1506", href: "tel:1506", detail: "เรื่องร้องเรียนด้านแรงงานกด 5; คุ้มครองแรงงานกด 3" },
-      { type: "website", label: "บริการร้องเรียน", href: "https://www.mol.go.th/service-complaint" },
+      { type: "phone", label: "โทร 1506 กด 3", href: "tel:1506", detail: "กรมสวัสดิการและคุ้มครองแรงงาน" },
+      { type: "website", label: "ยื่นคำร้องผ่าน e-Service", href: "https://eservice.labour.go.th/register/esrvq101/lcs" },
+      { type: "website", label: "ระบบรับเรื่องร้องทุกข์ กระทรวงแรงงาน", href: "https://petition.mol.go.th/" },
     ],
     source: { label: "บริการร้องเรียน กระทรวงแรงงาน", url: "https://www.mol.go.th/service-complaint" },
     lastVerifiedAt: verifiedAt,
@@ -204,6 +220,20 @@ const agencyCatalog: AgencyGuidance[] = [
     lastVerifiedAt: verifiedAt,
   },
   {
+    id: "oic",
+    name: "สำนักงานคณะกรรมการข้อมูลข่าวสารของราชการ",
+    summary: "รับเรื่องร้องเรียนหรืออุทธรณ์เมื่อหน่วยงานรัฐไม่เปิดเผยข้อมูล ไม่ตอบคำขอ หรือมีคำสั่งปฏิเสธ",
+    canDo: "รับเรื่องร้องเรียนและอุทธรณ์ตามกฎหมายข้อมูลข่าวสารของราชการ พร้อมออกเลขคำร้องสำหรับติดตามในระบบดิจิทัล",
+    cannotDo: "ต้องแยกให้ถูกว่าเป็นกรณีไม่ได้รับคำตอบหรือเป็นการอุทธรณ์คำสั่งปฏิเสธ และควรมีสำเนาคำขอเดิมหรือหนังสือปฏิเสธ",
+    complaintTypes: ["official-information"],
+    channels: [
+      { type: "website", label: "ร้องเรียนหรืออุทธรณ์ออนไลน์", href: "https://www.oic.go.th/e-ca/admin_oic_eca/home.aspx" },
+      { type: "phone", label: "โทร 0 2283 4000 ต่อ 17", href: "tel:022834000", detail: "สำนักงานคณะกรรมการข้อมูลข่าวสารของราชการ" },
+    ],
+    source: { label: "ระบบจัดการเรื่องร้องเรียนและอุทธรณ์ด้วยระบบดิจิทัล สขร.", url: "https://www.oic.go.th/e-ca/admin_oic_eca/home.aspx" },
+    lastVerifiedAt: verifiedAt,
+  },
+  {
     id: "ombudsman",
     name: "สำนักงานผู้ตรวจการแผ่นดิน",
     summary: "ตรวจสอบความเดือดร้อนหรือความไม่เป็นธรรมจากการใช้อำนาจรัฐ",
@@ -212,7 +242,7 @@ const agencyCatalog: AgencyGuidance[] = [
     complaintTypes: ["state-action"],
     channels: [
       { type: "phone", label: "โทร 1676", href: "tel:1676", detail: "โทรฟรีทั่วประเทศ" },
-      { type: "website", label: "เว็บไซต์ผู้ตรวจการแผ่นดิน", href: "https://www.ombudsman.go.th/" },
+      { type: "website", label: "ดูช่องทางร้องเรียนของผู้ตรวจการแผ่นดิน", href: "https://www.ombudsman.go.th/" },
     ],
     source: { label: "สำนักงานผู้ตรวจการแผ่นดิน", url: "https://web.ombudsman.go.th/organization/about/ombudsman" },
     lastVerifiedAt: verifiedAt,
@@ -223,7 +253,7 @@ const agencyCatalog: AgencyGuidance[] = [
     summary: "รับเรื่องที่อาจมีการละเมิดสิทธิมนุษยชนหรือการเลือกปฏิบัติที่ไม่เป็นธรรม",
     canDo: "รับคำปรึกษา รับเรื่องร้องเรียน ตรวจสอบตามหน้าที่และอำนาจ และเสนอแนะมาตรการแก้ไขหรือป้องกัน",
     cannotDo: "ไม่ใช่ศาลและไม่ตัดสินชดใช้ค่าเสียหาย เรื่องที่อยู่ในศาลหรือพ้นอำนาจอาจรับตรวจสอบไม่ได้ตามเงื่อนไข",
-    complaintTypes: ["human-rights", "state-action", "environment", "labour", "privacy-digital"],
+    complaintTypes: ["human-rights", "state-action"],
     channels: [
       { type: "phone", label: "โทร 1377", href: "tel:1377", detail: "เวลาราชการ" },
       { type: "website", label: "ร้องเรียนออนไลน์", href: "https://complaints.nhrc.or.th/" },
@@ -299,13 +329,14 @@ function hasAffirmedKeyword(context: string, keyword: string) {
 export function matchComplaintTypes(context: string): ComplaintTypeMatch[] {
   const normalized = context.toLocaleLowerCase("th-TH");
   const matched = complaintTypeRules
-    .map((rule) => ({
-      id: rule.id,
-      label: rule.label,
-      matchedKeywords: rule.keywords.filter((keyword) => normalized.includes(keyword.toLocaleLowerCase("th-TH"))),
-    }))
-    .filter((match) => match.matchedKeywords.length > 0)
-    .sort((left, right) => right.matchedKeywords.length - left.matchedKeywords.length);
+    .map((rule) => {
+      const matchedKeywords = rule.keywords.filter((keyword) => hasAffirmedKeyword(normalized, keyword.toLocaleLowerCase("th-TH")));
+      const matchedStrongKeywords = rule.strongKeywords.filter((keyword) => hasAffirmedKeyword(normalized, keyword.toLocaleLowerCase("th-TH")));
+      return { id: rule.id, label: rule.label, matchedKeywords, strongCount: matchedStrongKeywords.length };
+    })
+    .filter((match) => match.strongCount > 0)
+    .sort((left, right) => (right.strongCount * 4 + right.matchedKeywords.length) - (left.strongCount * 4 + left.matchedKeywords.length))
+    .map(({ id, label, matchedKeywords }) => ({ id, label, matchedKeywords }));
 
   return matched.length > 0
     ? matched
@@ -326,10 +357,11 @@ export function suggestAgencies(context: string, selectedOptions: ActionOptionId
 
       if (agency.id === "moj" && wantsAdvice) score += 9;
       if (agency.id === "pcd" && matchedTypeIds.has("environment")) score += 30;
-      if (agency.id === "mol" && matchedTypeIds.has("labour")) score += 30;
+      if (agency.id === "dlpw" && matchedTypeIds.has("labour")) score += 36;
       if (agency.id === "ocpb" && matchedTypeIds.has("consumer")) score += 30;
       if (agency.id === "pdpc" && matchedTypeIds.has("privacy-digital")) score += 30;
       if (agency.id === "ccib" && matchedTypeIds.has("fraud-cyber")) score += 30;
+      if (agency.id === "oic" && matchedTypeIds.has("official-information")) score += 40;
       if (agency.id === "ombudsman" && matchedTypeIds.has("state-action")) score += 12;
       if (agency.id === "nhrc" && matchedTypeIds.has("human-rights")) score += 12;
       if (agency.id === "government-1111" && matchedTypeIds.has("state-action")) score += 4;
@@ -348,16 +380,18 @@ export function suggestAgencies(context: string, selectedOptions: ActionOptionId
     : fallback.filter((agency): agency is AgencyGuidance => Boolean(agency)).map((agency) => ({ agency, agencyMatches: ["general" as const], score: 1 }));
 
   return selected.map(({ agency, agencyMatches }, index) => {
-    const labels = agencyMatches
-      .map((type) => typeMatches.find((match) => match.id === type)?.label)
-      .filter((label): label is string => Boolean(label));
+    const matchingDetails = agencyMatches
+      .map((type) => typeMatches.find((match) => match.id === type))
+      .filter((match): match is ComplaintTypeMatch => Boolean(match));
+    const labels = matchingDetails.map((match) => match.label);
+    const evidencePhrases = Array.from(new Set(matchingDetails.flatMap((match) => match.matchedKeywords))).slice(0, 4);
 
     return {
       ...agency,
       matchedComplaintTypes: agencyMatches,
       rank: index === 0 ? "หลัก" : index === 1 ? "สนับสนุน" : "ทางเลือก",
       reason: labels.length > 0
-        ? `ตรงกับประเด็น ${labels.join(" และ ")}`
+        ? `ตรงกับ${labels.join(" และ ")}${evidencePhrases.length > 0 ? ` จากข้อเท็จจริง “${evidencePhrases.join("”, “")}”` : ""}`
         : "เป็นช่องทางให้เจ้าหน้าที่ช่วยคัดกรองและส่งต่อเมื่อยังระบุหน่วยงานเฉพาะไม่ได้",
     };
   });

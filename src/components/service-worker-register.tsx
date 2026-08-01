@@ -13,7 +13,7 @@ export function ServiceWorkerRegister() {
 
     async function registerAndCacheStaticFiles() {
       try {
-        const registration = await navigator.serviceWorker.register(serviceWorkerUrl, { scope: scopeUrl.pathname });
+        const registration = await navigator.serviceWorker.register(serviceWorkerUrl, { scope: scopeUrl.pathname, updateViaCache: "none" });
         await navigator.serviceWorker.ready;
 
         const staticUrls = performance

@@ -15,7 +15,7 @@ export type TrackingDraft = {
 
 type SubmissionGuidanceProps = {
   decision: FinalDecision;
-  agency: SuggestedAgency;
+  agencies: SuggestedAgency[];
   tracking: TrackingDraft;
   mode: AssistanceMode;
   consent: boolean;
@@ -32,7 +32,7 @@ function escapeHtml(value: string) {
 
 export function SubmissionGuidance({
   decision,
-  agency,
+  agencies,
   tracking,
   mode,
   consent,
@@ -44,10 +44,12 @@ export function SubmissionGuidance({
 }: SubmissionGuidanceProps) {
   const shouldSubmit = decision !== "prepare";
   const grounding = [
-    `หน่วยงาน: ${agency.name}`,
-    `หน่วยงานทำได้: ${agency.canDo}`,
-    `หน่วยงานทำไม่ได้: ${agency.cannotDo}`,
-    ...agency.channels.map((channel) => `ช่องทางที่ตรวจสอบแล้ว: ${channel.label}${channel.detail ? ` — ${channel.detail}` : ""}`),
+    ...agencies.flatMap((agency) => [
+      `หน่วยงาน: ${agency.name}`,
+      `หน่วยงานทำได้: ${agency.canDo}`,
+      `หน่วยงานทำไม่ได้: ${agency.cannotDo}`,
+      ...agency.channels.map((channel) => `${agency.name} — ช่องทางที่ตรวจสอบแล้ว: ${channel.label}${channel.detail ? ` — ${channel.detail}` : ""}`),
+    ]),
     "หลังส่งควรเก็บสำเนา หลักฐานการส่ง เลขอ้างอิง และวันที่ติดต่อทุกครั้ง",
     "หากไม่มีคำตอบ ให้ตรวจสถานะผ่านช่องทางของหน่วยงานก่อน และขอคำปรึกษาหากมีกำหนดเวลาทางกฎหมาย",
   ];
@@ -59,7 +61,7 @@ export function SubmissionGuidance({
   function downloadTrackingRecord() {
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>บันทึกการติดตามเรื่อง</title><style>body{font-family:'Bai Jamjuree','Tahoma',sans-serif;line-height:1.8;margin:48px;color:#102c3d}h1{font-size:22px}</style></head><body>
       <h1>บันทึกการส่งและติดตามเรื่อง</h1>
-      <p><strong>หน่วยงาน:</strong> ${escapeHtml(agency.name)}</p>
+      <p><strong>หน่วยงาน:</strong> ${escapeHtml(agencies.map((agency) => agency.name).join(" / "))}</p>
       <p><strong>สถานะ:</strong> ${tracking.status === "sent" ? "ส่งแล้ว" : "ยังไม่ส่ง"}</p>
       <p><strong>ช่องทาง:</strong> ${escapeHtml(tracking.channel || "ยังไม่ระบุ")}</p>
       <p><strong>วันที่ส่ง:</strong> ${escapeHtml(tracking.sentDate || "ยังไม่ระบุ")}</p>
@@ -89,17 +91,30 @@ export function SubmissionGuidance({
 
       {shouldSubmit ? (
         <>
-          <section className="mt-7 border border-line bg-white p-5">
-            <h3 className="text-xl font-bold text-ink">ช่องทางของ {agency.name}</h3>
-            <p className="mt-2 text-sm leading-6 text-ink-soft">ระบบไม่ส่งเรื่องให้อัตโนมัติ คุณเป็นผู้ตรวจทานและเลือกช่องทางส่งด้วยตนเอง</p>
-            <div className="mt-5 flex flex-wrap gap-3">
-              {agency.channels.map((channel) => (
-                <a key={channel.label} href={channel.href} target={channel.type === "website" ? "_blank" : undefined} rel={channel.type === "website" ? "noreferrer" : undefined} className="inline-flex min-h-12 items-center bg-river px-5 py-3 font-bold text-white no-underline hover:bg-ink">
-                  {channel.type === "phone" ? "☎ " : ""}{channel.label}
-                </a>
+          <section className="mt-7">
+            <h3 className="text-xl font-bold text-ink">ช่องทางส่งครบทั้ง {agencies.length} หน่วยงานที่คุณเลือก</h3>
+            <p className="mt-2 text-sm leading-6 text-ink-soft">ส่งหนังสือของแต่ละหน่วยงานแยกกัน ขอเลขรับจากทุกแห่ง และจดให้ชัดว่าเลขใดเป็นของหน่วยงานใด</p>
+            <div className="mt-5 grid gap-4">
+              {agencies.map((agency, index) => (
+                <article key={agency.id} className="border border-line bg-white p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-river text-sm font-bold text-white">{index + 1}</span>
+                    <div>
+                      <h4 className="text-lg font-bold text-ink">{agency.name}</h4>
+                      <p className="mt-1 text-sm leading-6 text-ink-soft">{agency.canDo}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    {agency.channels.map((channel) => (
+                      <a key={`${agency.id}-${channel.label}`} href={channel.href} target={channel.type === "website" ? "_blank" : undefined} rel={channel.type === "website" ? "noreferrer" : undefined} className="inline-flex min-h-12 items-center bg-river px-5 py-3 font-bold text-white no-underline hover:bg-ink">
+                        {channel.type === "phone" ? "☎ " : ""}{channel.label}
+                      </a>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-xs leading-5 text-ink-soft">ตรวจสอบล่าสุด {agency.lastVerifiedAt} · <a href={agency.source.url} target="_blank" rel="noreferrer" className="font-bold text-river underline underline-offset-4">{agency.source.label}</a></p>
+                </article>
               ))}
             </div>
-            <p className="mt-4 text-xs leading-5 text-ink-soft">ตรวจสอบล่าสุด {agency.lastVerifiedAt} · <a href={agency.source.url} target="_blank" rel="noreferrer" className="font-bold text-river underline underline-offset-4">{agency.source.label}</a></p>
           </section>
 
           <ol className="mt-6 grid gap-3 text-sm leading-6 text-ink">
@@ -112,7 +127,7 @@ export function SubmissionGuidance({
       ) : (
         <section className="mt-7 border-l-4 border-saffron bg-[#fff8e8] p-5">
           <h3 className="text-xl font-bold text-ink">ยังไม่ต้องส่งเรื่องในวันนี้</h3>
-          <p className="mt-2 text-sm leading-6 text-ink-soft">ดาวน์โหลดแผนและเก็บหลักฐานไว้ในที่ปลอดภัย หากสถานการณ์เปลี่ยนหรือใกล้กำหนดเวลา ให้กลับมาประเมินใหม่หรือขอคำปรึกษาจาก {agency.name}</p>
+          <p className="mt-2 text-sm leading-6 text-ink-soft">ดาวน์โหลดแผนและเก็บหลักฐานไว้ในที่ปลอดภัย หากสถานการณ์เปลี่ยนหรือใกล้กำหนดเวลา ให้กลับมาประเมินใหม่หรือขอคำปรึกษาจาก {agencies.map((agency) => agency.name).join(" หรือ ")}</p>
         </section>
       )}
 

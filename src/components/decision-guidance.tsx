@@ -6,7 +6,7 @@ import { finalDecisionOptions, type FinalDecision, type SuggestedAgency } from "
 
 type DecisionGuidanceProps = {
   decision: FinalDecision | null;
-  agency: SuggestedAgency;
+  agencies: SuggestedAgency[];
   mode: AssistanceMode;
   consent: boolean;
   context: string;
@@ -16,9 +16,9 @@ type DecisionGuidanceProps = {
   onRequireConsent: () => void;
 };
 
-export function DecisionGuidance({ decision, agency, mode, consent, context, onSelect, onBack, onContinue, onRequireConsent }: DecisionGuidanceProps) {
+export function DecisionGuidance({ decision, agencies, mode, consent, context, onSelect, onBack, onContinue, onRequireConsent }: DecisionGuidanceProps) {
   const grounding = [
-    `หน่วยงานที่เลือก: ${agency.name}`,
+    ...agencies.map((agency) => `หน่วยงานที่เลือก: ${agency.name} — ${agency.canDo}`),
     ...finalDecisionOptions.flatMap((option) => [`${option.title}: ${option.description}`, `ผลลัพธ์ถัดไป: ${option.nextResult}`]),
   ];
 

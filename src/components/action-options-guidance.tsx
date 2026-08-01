@@ -19,6 +19,7 @@ export function ActionOptionsGuidance({ options, selectedIds, mode, consent, con
   const grounding = options.flatMap((option) => [
     `ทางเลือก: ${option.title} — ${option.summary}`,
     `เหมาะเมื่อ: ${option.suitableWhen}`,
+    `เริ่มอย่างไร: ${option.firstStep}`,
     ...(option.recommendedReason ? [`เหตุผลที่กฎแนะนำ: ${option.recommendedReason}`] : []),
   ]);
 
@@ -60,6 +61,7 @@ export function ActionOptionsGuidance({ options, selectedIds, mode, consent, con
                     </span>
                     <span className="mt-2 block text-sm leading-6 text-ink-soft">{option.summary}</span>
                     {option.recommendedReason && <span className="mt-3 block border-l-2 border-saffron pl-3 text-xs leading-5 text-ink">{option.recommendedReason}</span>}
+                    <span className="mt-3 block border-l-4 border-river bg-[#f3f8f6] p-3 text-sm leading-6 text-ink"><b>เริ่มอย่างไร:</b> {option.firstStep}</span>
                     <span className="mt-3 block text-xs leading-5 text-ink-soft"><b className="text-ink">เหมาะเมื่อ:</b> {option.suitableWhen}</span>
                   </span>
                 </span>
@@ -80,7 +82,7 @@ export function ActionOptionsGuidance({ options, selectedIds, mode, consent, con
         consent={consent}
         context={context}
         grounding={grounding}
-        buttonLabel="ให้ AI ช่วยจัดลำดับทางเลือก"
+        buttonLabel="ให้ AI ช่วยจัดลำดับจากเรื่องของฉัน"
         onRequireConsent={onRequireConsent}
       />
 

@@ -16,6 +16,7 @@ export function RightsGuidance({ rights, mode, consent, context, onBack, onConti
   const grounding = rights.flatMap((right) => [
     `สิทธิที่อาจเกี่ยวข้อง: ${right.title} — ${right.plainLanguage}`,
     `เหตุผลจากกฎ: ${right.whyMatched}`,
+    `สิ่งที่ผู้ใช้ทำได้ตอนนี้: ${right.whatYouCanDo}`,
     `สิ่งที่ต้องตรวจเพิ่ม: ${right.whatToCheck}`,
   ]);
 
@@ -41,8 +42,11 @@ export function RightsGuidance({ rights, mode, consent, context, onBack, onConti
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-river text-sm font-bold text-white" aria-hidden="true">
                 {index + 1}
               </span>
-              <div>
-                <h3 className="text-lg font-bold leading-7 text-ink">{right.title}</h3>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-bold leading-7 text-ink">{right.title}</h3>
+                  <span className={`px-2 py-1 text-[0.7rem] font-bold ${right.confidence === "ตรงกับเรื่องที่เล่า" ? "bg-[#e9f4f2] text-river" : "bg-[#fff2d5] text-[#7b5310]"}`}>{right.confidence}</span>
+                </div>
                 <p className="mt-2 text-sm leading-7 text-ink">{right.plainLanguage}</p>
               </div>
             </div>
@@ -51,6 +55,10 @@ export function RightsGuidance({ rights, mode, consent, context, onBack, onConti
               <div>
                 <dt className="font-bold text-river">เหตุผลที่ระบบแสดงข้อนี้</dt>
                 <dd className="mt-1 text-ink-soft">{right.whyMatched}</dd>
+              </div>
+              <div className="border-l-4 border-river bg-[#e9f4f2] p-4">
+                <dt className="font-bold text-river">สิ่งที่คุณทำได้ตอนนี้</dt>
+                <dd className="mt-1 text-ink">{right.whatYouCanDo}</dd>
               </div>
               <div>
                 <dt className="font-bold text-coral">สิ่งที่ควรตรวจเพิ่ม</dt>
@@ -86,7 +94,7 @@ export function RightsGuidance({ rights, mode, consent, context, onBack, onConti
         consent={consent}
         context={context}
         grounding={grounding}
-        buttonLabel="ให้ AI ช่วยอธิบายสิทธิ"
+        buttonLabel="ให้ AI เชื่อมสิทธิกับเรื่องของฉัน"
         onRequireConsent={onRequireConsent}
       />
 
