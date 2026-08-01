@@ -1,11 +1,25 @@
+import { WorkflowAiAssistant } from "@/components/workflow-ai-assistant";
 import type { ActionOption } from "@/lib/action-options";
+import type { AssistanceMode } from "@/lib/story-assistance";
 
 type OptionComparisonProps = {
   options: ActionOption[];
+  mode: AssistanceMode;
+  consent: boolean;
+  context: string;
   onBack: () => void;
+  onContinue: () => void;
+  onRequireConsent: () => void;
 };
 
-export function OptionComparison({ options, onBack }: OptionComparisonProps) {
+export function OptionComparison({ options, mode, consent, context, onBack, onContinue, onRequireConsent }: OptionComparisonProps) {
+  const grounding = options.flatMap((option) => [
+    `${option.title} ผลดี: ${option.benefit}`,
+    `${option.title} ข้อจำกัด: ${option.limitation}`,
+    `${option.title} ผลที่อาจตามมา: ${option.possibleOutcome}`,
+    `${option.title} ใช้แรงและเวลา ${option.effort}; เปิดเผยข้อมูล ${option.disclosure}`,
+  ]);
+
   return (
     <>
       <div className="flex items-start justify-between gap-6 border-b border-line pb-7">
@@ -54,11 +68,23 @@ export function OptionComparison({ options, onBack }: OptionComparisonProps) {
         ))}
       </div>
 
+      <WorkflowAiAssistant
+        stage="comparison"
+        mode={mode}
+        consent={consent}
+        context={context}
+        grounding={grounding}
+        buttonLabel="ให้ AI ช่วยเปรียบเทียบภาษาง่าย"
+        onRequireConsent={onRequireConsent}
+      />
+
       <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button type="button" onClick={onBack} className="min-h-12 px-1 py-3 text-sm font-bold text-ink-soft underline underline-offset-4">
           ← กลับไปเลือกทาง
         </button>
-        <p className="max-w-sm text-right text-xs leading-5 text-ink-soft">ขั้นถัดไปคือดูว่าหน่วยงานใดช่วยเรื่องใดได้</p>
+        <button type="button" onClick={onContinue} className="min-h-12 bg-ink px-7 py-3 font-bold text-white transition hover:bg-river">
+          ดูหน่วยงานที่ช่วยได้ →
+        </button>
       </div>
     </>
   );

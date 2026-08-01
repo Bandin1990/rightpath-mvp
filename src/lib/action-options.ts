@@ -18,10 +18,25 @@ const safetyKeywords = ["ข่มขู่", "ทำร้าย", "คุก�
 const evidenceKeywords = ["หลักฐาน", "ภาพ", "วิดีโอ", "ข้อความ", "แชต", "ใบเสร็จ", "หนังสือ", "พยาน", "สลิป"];
 const stateKeywords = ["เจ้าหน้าที่", "หน่วยงาน", "เทศบาล", "อบต", "อำเภอ", "จังหวัด", "กรม", "กระทรวง", "ตำรวจ", "ราชการ"];
 
+function hasAffirmedKeyword(context: string, keyword: string) {
+  let searchFrom = 0;
+
+  while (searchFrom < context.length) {
+    const keywordIndex = context.indexOf(keyword, searchFrom);
+    if (keywordIndex < 0) return false;
+    const prefix = context.slice(Math.max(0, keywordIndex - 55), keywordIndex);
+    const isNegated = /(?:ไม่มี|ยังไม่มี|ไม่เคยมี|ไม่ได้มี|ไม่กังวล|ไม่มีความกังวล|ไม่ต้องการ)[^.!?\n]{0,55}$/u.test(prefix);
+    if (!isNegated) return true;
+    searchFrom = keywordIndex + keyword.length;
+  }
+
+  return false;
+}
+
 export function suggestActionOptions(context: string): ActionOption[] {
   const normalizedContext = context.toLocaleLowerCase("th-TH");
-  const hasSafetyConcern = safetyKeywords.some((keyword) => normalizedContext.includes(keyword));
-  const hasEvidence = evidenceKeywords.some((keyword) => normalizedContext.includes(keyword));
+  const hasSafetyConcern = safetyKeywords.some((keyword) => hasAffirmedKeyword(normalizedContext, keyword));
+  const hasEvidence = evidenceKeywords.some((keyword) => hasAffirmedKeyword(normalizedContext, keyword));
   const involvesState = stateKeywords.some((keyword) => normalizedContext.includes(keyword));
 
   const options: ActionOption[] = [

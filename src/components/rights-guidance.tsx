@@ -1,12 +1,24 @@
+import { WorkflowAiAssistant } from "@/components/workflow-ai-assistant";
 import type { SuggestedRight } from "@/lib/rights-guidance";
+import type { AssistanceMode } from "@/lib/story-assistance";
 
 type RightsGuidanceProps = {
   rights: SuggestedRight[];
+  mode: AssistanceMode;
+  consent: boolean;
+  context: string;
   onBack: () => void;
   onContinue: () => void;
+  onRequireConsent: () => void;
 };
 
-export function RightsGuidance({ rights, onBack, onContinue }: RightsGuidanceProps) {
+export function RightsGuidance({ rights, mode, consent, context, onBack, onContinue, onRequireConsent }: RightsGuidanceProps) {
+  const grounding = rights.flatMap((right) => [
+    `สิทธิที่อาจเกี่ยวข้อง: ${right.title} — ${right.plainLanguage}`,
+    `เหตุผลจากกฎ: ${right.whyMatched}`,
+    `สิ่งที่ต้องตรวจเพิ่ม: ${right.whatToCheck}`,
+  ]);
+
   return (
     <>
       <div className="flex items-start justify-between gap-6 border-b border-line pb-7">
@@ -65,8 +77,18 @@ export function RightsGuidance({ rights, onBack, onContinue }: RightsGuidancePro
 
       <aside className="mt-7 border-l-4 border-river bg-[#e9f4f2] p-5 text-sm leading-6 text-ink">
         <strong className="block">เรื่องของคุณยังอยู่ในหน่วยความจำของหน้านี้เท่านั้น</strong>
-        การจับคู่สิทธิทำในเบราว์เซอร์ ไม่ส่งเรื่องกลับไปหา AI และไม่บันทึกลงฐานข้อมูล
+        การจับคู่สิทธิทำในเบราว์เซอร์และไม่บันทึกลงฐานข้อมูล หากเปิดโหมด AI ระบบจะส่งเฉพาะเมื่อคุณกดขอคำอธิบาย
       </aside>
+
+      <WorkflowAiAssistant
+        stage="rights"
+        mode={mode}
+        consent={consent}
+        context={context}
+        grounding={grounding}
+        buttonLabel="ให้ AI ช่วยอธิบายสิทธิ"
+        onRequireConsent={onRequireConsent}
+      />
 
       <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button type="button" onClick={onBack} className="min-h-12 px-1 py-3 text-sm font-bold text-ink-soft underline underline-offset-4">

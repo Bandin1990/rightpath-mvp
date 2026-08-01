@@ -1,15 +1,26 @@
+import { WorkflowAiAssistant } from "@/components/workflow-ai-assistant";
 import type { ActionOption, ActionOptionId } from "@/lib/action-options";
+import type { AssistanceMode } from "@/lib/story-assistance";
 
 type ActionOptionsGuidanceProps = {
   options: ActionOption[];
   selectedIds: ActionOptionId[];
+  mode: AssistanceMode;
+  consent: boolean;
+  context: string;
   onToggle: (optionId: ActionOptionId) => void;
   onBack: () => void;
   onCompare: () => void;
+  onRequireConsent: () => void;
 };
 
-export function ActionOptionsGuidance({ options, selectedIds, onToggle, onBack, onCompare }: ActionOptionsGuidanceProps) {
+export function ActionOptionsGuidance({ options, selectedIds, mode, consent, context, onToggle, onBack, onCompare, onRequireConsent }: ActionOptionsGuidanceProps) {
   const selectedIdSet = new Set(selectedIds);
+  const grounding = options.flatMap((option) => [
+    `ทางเลือก: ${option.title} — ${option.summary}`,
+    `เหมาะเมื่อ: ${option.suitableWhen}`,
+    ...(option.recommendedReason ? [`เหตุผลที่กฎแนะนำ: ${option.recommendedReason}`] : []),
+  ]);
 
   return (
     <>
@@ -60,8 +71,18 @@ export function ActionOptionsGuidance({ options, selectedIds, onToggle, onBack, 
 
       <aside className="mt-7 border-l-4 border-river bg-[#e9f4f2] p-5 text-sm leading-6 text-ink">
         <strong className="block">ข้อมูลยังอยู่ในหน่วยความจำของหน้านี้เท่านั้น</strong>
-        การเลือกทางทำในเบราว์เซอร์ ไม่ส่งกลับไปหา AI และจะหายเมื่อปิดหรือโหลดหน้าใหม่
+        การเลือกทางทำในเบราว์เซอร์และจะหายเมื่อปิดหรือโหลดหน้าใหม่ AI อธิบายได้แต่เลือกแทนคุณไม่ได้
       </aside>
+
+      <WorkflowAiAssistant
+        stage="options"
+        mode={mode}
+        consent={consent}
+        context={context}
+        grounding={grounding}
+        buttonLabel="ให้ AI ช่วยจัดลำดับทางเลือก"
+        onRequireConsent={onRequireConsent}
+      />
 
       <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button type="button" onClick={onBack} className="min-h-12 px-1 py-3 text-sm font-bold text-ink-soft underline underline-offset-4">

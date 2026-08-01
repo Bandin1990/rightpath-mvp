@@ -10,10 +10,17 @@ import {
 } from "@/lib/emergency-guidance";
 import { classifyEmergencyText, emergencyThreatKeywords } from "@/lib/emergency-classifier";
 import { EmergencyShortcut } from "@/components/emergency-shortcut";
+import { AgencyGuidance } from "@/components/agency-guidance";
 import { ActionOptionsGuidance } from "@/components/action-options-guidance";
+import { AssistanceModeSelector } from "@/components/assistance-mode-selector";
+import { ComplaintPackageBuilder, type DocumentDraft } from "@/components/complaint-package-builder";
+import { DecisionGuidance } from "@/components/decision-guidance";
 import { OptionComparison } from "@/components/option-comparison";
+import { RiskGuidance } from "@/components/risk-guidance";
 import { RightsGuidance } from "@/components/rights-guidance";
 import { StoryInterview } from "@/components/story-interview";
+import { SubmissionGuidance, type TrackingDraft } from "@/components/submission-guidance";
+import { WorkflowAiAssistant } from "@/components/workflow-ai-assistant";
 import {
   createRuleBasedStoryAssistance,
   type AssistanceMode,
@@ -22,6 +29,14 @@ import {
 } from "@/lib/story-assistance";
 import { suggestRights } from "@/lib/rights-guidance";
 import { suggestActionOptions, type ActionOptionId } from "@/lib/action-options";
+import {
+  assessRisks,
+  buildEvidenceChecklist,
+  getAgencyById,
+  matchComplaintTypes,
+  suggestAgencies,
+  type FinalDecision,
+} from "@/lib/workflow-guidance";
 
 const isStaticPublicDemo = process.env.NEXT_PUBLIC_STATIC_PUBLIC_DEMO === "true";
 
@@ -83,7 +98,27 @@ const steps = [
 ] as const;
 
 type EmergencyStatus = "checking" | "safe";
-type WorkflowStage = "story" | "rights" | "options" | "comparison";
+type WorkflowStage = "story" | "rights" | "options" | "comparison" | "agencies" | "risks" | "decision" | "document" | "submission";
+
+const emptyDocumentDraft: DocumentDraft = {
+  date: "",
+  name: "",
+  contact: "",
+  address: "",
+  subject: "",
+  facts: "",
+  requests: "",
+  selectedEvidence: [],
+};
+
+const emptyTrackingDraft: TrackingDraft = {
+  status: "not-sent",
+  channel: "",
+  sentDate: "",
+  referenceNumber: "",
+  followUpDate: "",
+  note: "",
+};
 
 export function PrivacyFirstWorkflow() {
   const [story, setStory] = useState("");
@@ -102,6 +137,11 @@ export function PrivacyFirstWorkflow() {
   const [assistanceResult, setAssistanceResult] = useState<StoryAssistanceResult | null>(null);
   const [workflowStage, setWorkflowStage] = useState<WorkflowStage>("story");
   const [selectedActionOptionIds, setSelectedActionOptionIds] = useState<ActionOptionId[]>([]);
+  const [selectedAgencyId, setSelectedAgencyId] = useState<string | null>(null);
+  const [acknowledgedRiskIds, setAcknowledgedRiskIds] = useState<string[]>([]);
+  const [finalDecision, setFinalDecision] = useState<FinalDecision | null>(null);
+  const [documentDraft, setDocumentDraft] = useState<DocumentDraft>(emptyDocumentDraft);
+  const [trackingDraft, setTrackingDraft] = useState<TrackingDraft>(emptyTrackingDraft);
   const [confirmedFollowUpAnswers, setConfirmedFollowUpAnswers] = useState<StoryFollowUpAnswer[]>([]);
   const [interviewRound, setInterviewRound] = useState(0);
   const [assistanceError, setAssistanceError] = useState("");
@@ -118,15 +158,25 @@ export function PrivacyFirstWorkflow() {
   const restartSpeechTimerRef = useRef<number | null>(null);
   const activeStep = emergencyStatus !== "safe"
     ? 0
-    : workflowStage === "comparison"
-      ? 5
-      : workflowStage === "options"
-        ? 4
-        : workflowStage === "rights"
-          ? 3
-          : assistanceResult
-            ? 2
-            : 1;
+    : workflowStage === "submission"
+      ? 10
+      : workflowStage === "document"
+        ? 9
+        : workflowStage === "decision"
+          ? 8
+          : workflowStage === "risks"
+            ? 7
+            : workflowStage === "agencies"
+              ? 6
+              : workflowStage === "comparison"
+                ? 5
+                : workflowStage === "options"
+                  ? 4
+                  : workflowStage === "rights"
+                    ? 3
+                    : assistanceResult
+                      ? 2
+                      : 1;
   const rightsInput = [
     story,
     assistanceResult?.summary ?? "",
@@ -137,6 +187,11 @@ export function PrivacyFirstWorkflow() {
   const suggestedRights = suggestRights(rightsInput);
   const suggestedActionOptions = suggestActionOptions(rightsInput);
   const selectedActionOptions = suggestedActionOptions.filter((option) => selectedActionOptionIds.includes(option.id));
+  const complaintTypeMatches = matchComplaintTypes(rightsInput);
+  const suggestedAgencies = suggestAgencies(rightsInput, selectedActionOptionIds);
+  const selectedAgency = getAgencyById(suggestedAgencies, selectedAgencyId);
+  const riskAssessments = assessRisks(rightsInput, selectedAgency);
+  const evidenceChecklist = buildEvidenceChecklist(rightsInput, complaintTypeMatches);
   const shouldPromptAiConsent = assistanceMode === "ai"
     && !aiConsent
     && assistanceError.startsWith("กรุณาติ๊กยืนยันการใช้ AI");
@@ -176,6 +231,11 @@ export function PrivacyFirstWorkflow() {
     setWorkflowStage("story");
     setAssistanceResult(null);
     setSelectedActionOptionIds([]);
+    setSelectedAgencyId(null);
+    setAcknowledgedRiskIds([]);
+    setFinalDecision(null);
+    setDocumentDraft(emptyDocumentDraft);
+    setTrackingDraft(emptyTrackingDraft);
     setConfirmedFollowUpAnswers([]);
     setInterviewRound(0);
     setAssistanceError("");
@@ -196,6 +256,60 @@ export function PrivacyFirstWorkflow() {
         ? currentIds.filter((currentId) => currentId !== optionId)
         : [...currentIds, optionId]
     ));
+  }
+
+  function changeAssistanceMode(nextMode: AssistanceMode) {
+    setAssistanceMode(nextMode);
+    setAssistanceError("");
+    if (nextMode === "rules") setAiConsent(false);
+
+    if (workflowStage === "story") {
+      setAssistanceResult(null);
+      setConfirmedFollowUpAnswers([]);
+      setInterviewRound(0);
+    }
+  }
+
+  function requireAiConsent() {
+    setAssistanceError("กรุณาติ๊กยืนยันการใช้ AI ในกรอบสีเหลืองก่อน แล้วกดปุ่ม AI อีกครั้ง");
+    aiConsentRef.current?.focus();
+    aiConsentRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function toggleRiskAcknowledgement(riskId: string) {
+    setAcknowledgedRiskIds((currentIds) => currentIds.includes(riskId)
+      ? currentIds.filter((currentId) => currentId !== riskId)
+      : [...currentIds, riskId]);
+  }
+
+  function continueFromDecision() {
+    if (!finalDecision || !selectedAgency || !assistanceResult) return;
+
+    const topicLabel = complaintTypeMatches[0]?.label ?? "ปัญหาที่ขอให้ตรวจสอบ";
+    const requestText = finalDecision === "complaint"
+      ? "ขอให้ตรวจสอบข้อเท็จจริง แจ้งผลและความคืบหน้า และดำเนินการแก้ไขหรือป้องกันความเสียหายตามหน้าที่และอำนาจ"
+      : finalDecision === "consult"
+        ? "ขอคำปรึกษาว่าเรื่องนี้อยู่ในหน้าที่ของหน่วยงานใด มีข้อมูลใดต้องเตรียม และควรระวังกำหนดเวลาหรือการเปิดเผยข้อมูลเรื่องใด"
+        : "จัดลำดับเหตุการณ์ เก็บหลักฐานที่ปลอดภัย และประเมินความพร้อมก่อนตัดสินใจดำเนินการ";
+
+    setDocumentDraft((currentDraft) => ({
+      ...currentDraft,
+      subject: currentDraft.subject || `${finalDecision === "complaint" ? "ขอให้ตรวจสอบกรณี" : finalDecision === "consult" ? "ขอคำปรึกษากรณี" : "แผนเตรียมข้อมูลกรณี"}${topicLabel}`,
+      facts: currentDraft.facts || assistanceResult.summary,
+      requests: currentDraft.requests || requestText,
+    }));
+    setWorkflowStage("document");
+  }
+
+  function restartWorkflow() {
+    stopSpeechInput();
+    setStory("");
+    setEmergencyStatus("checking");
+    setSelectedThreatIds([]);
+    setOtherThreat("");
+    setAssistanceMode("rules");
+    setAiConsent(false);
+    resetStoryAssistance();
   }
 
   function updateStory(nextStory: string) {
@@ -561,6 +675,18 @@ export function PrivacyFirstWorkflow() {
         </div>
 
         <div className="self-start border-t-[6px] border-saffron bg-white p-6 shadow-[0_24px_80px_rgba(16,44,61,0.11)] sm:p-10 lg:p-12">
+          <AssistanceModeSelector
+            mode={assistanceMode}
+            consent={aiConsent}
+            consentRef={aiConsentRef}
+            showConsentError={shouldPromptAiConsent}
+            onModeChange={changeAssistanceMode}
+            onConsentChange={(consent) => {
+              setAiConsent(consent);
+              if (consent) setAssistanceError("");
+            }}
+          />
+
           {emergencyStatus !== "safe" ? (
             <>
               <div className="flex items-start justify-between gap-6 border-b border-line pb-7">
@@ -653,6 +779,21 @@ export function PrivacyFirstWorkflow() {
                     </p>
                   </div>
                 )}
+
+                <WorkflowAiAssistant
+                  key={`emergency-${otherThreat}-${selectedThreatIds.join("-")}`}
+                  stage="emergency"
+                  mode={assistanceMode}
+                  consent={aiConsent}
+                  context={otherThreat || effectiveThreats.map((threat) => threat.label).join(" · ")}
+                  grounding={[
+                    ...effectiveThreats.map((threat) => `ภัยที่กฎพบ: ${threat.label} — ${threat.detail}`),
+                    ...recommendedContacts.map((contact) => `ช่องทางที่กฎแนะนำ: ${contact.name} — ${contact.channels.map((channel) => channel.label).join(", ")}`),
+                    ...(effectiveThreats.length === 0 ? ["กฎยังไม่พบภัยที่ตรงกับข้อความ จึงต้องถามผู้ใช้เพิ่มหรือให้เจ้าหน้าที่ช่วยคัดกรอง"] : []),
+                  ]}
+                  buttonLabel="ให้ AI ช่วยอ่านภัยที่ระบุ"
+                  onRequireConsent={requireAiConsent}
+                />
               </div>
 
               {hasUrgentThreat && (
@@ -732,21 +873,103 @@ export function PrivacyFirstWorkflow() {
                 </button>
               </div>
             </>
+          ) : workflowStage === "submission" && assistanceResult && selectedAgency && finalDecision ? (
+            <SubmissionGuidance
+              decision={finalDecision}
+              agency={selectedAgency}
+              tracking={trackingDraft}
+              mode={assistanceMode}
+              consent={aiConsent}
+              context={assistanceResult.summary}
+              onTrackingChange={setTrackingDraft}
+              onBack={() => setWorkflowStage("document")}
+              onRestart={restartWorkflow}
+              onRequireConsent={requireAiConsent}
+            />
+          ) : workflowStage === "document" && assistanceResult && selectedAgency && finalDecision ? (
+            <ComplaintPackageBuilder
+              decision={finalDecision}
+              agency={selectedAgency}
+              evidenceChecklist={evidenceChecklist}
+              draft={documentDraft}
+              mode={assistanceMode}
+              consent={aiConsent}
+              aiContext={assistanceResult.summary}
+              onDraftChange={setDocumentDraft}
+              onBack={() => setWorkflowStage("decision")}
+              onContinue={() => setWorkflowStage("submission")}
+              onRequireConsent={requireAiConsent}
+            />
+          ) : workflowStage === "decision" && assistanceResult && selectedAgency ? (
+            <DecisionGuidance
+              decision={finalDecision}
+              agency={selectedAgency}
+              mode={assistanceMode}
+              consent={aiConsent}
+              context={rightsInput}
+              onSelect={setFinalDecision}
+              onBack={() => setWorkflowStage("risks")}
+              onContinue={continueFromDecision}
+              onRequireConsent={requireAiConsent}
+            />
+          ) : workflowStage === "risks" && assistanceResult && selectedAgency ? (
+            <RiskGuidance
+              risks={riskAssessments}
+              acknowledgedRiskIds={acknowledgedRiskIds}
+              mode={assistanceMode}
+              consent={aiConsent}
+              context={rightsInput}
+              onToggleAcknowledgement={toggleRiskAcknowledgement}
+              onBack={() => setWorkflowStage("agencies")}
+              onContinue={() => setWorkflowStage("decision")}
+              onRequireConsent={requireAiConsent}
+            />
+          ) : workflowStage === "agencies" && assistanceResult ? (
+            <AgencyGuidance
+              agencies={suggestedAgencies}
+              selectedAgencyId={selectedAgencyId}
+              mode={assistanceMode}
+              consent={aiConsent}
+              context={rightsInput}
+              onSelect={(agencyId) => {
+                setSelectedAgencyId(agencyId);
+                setAcknowledgedRiskIds([]);
+              }}
+              onBack={() => setWorkflowStage("comparison")}
+              onContinue={() => setWorkflowStage("risks")}
+              onRequireConsent={requireAiConsent}
+            />
           ) : workflowStage === "comparison" && assistanceResult ? (
-            <OptionComparison options={selectedActionOptions} onBack={() => setWorkflowStage("options")} />
+            <OptionComparison
+              options={selectedActionOptions}
+              mode={assistanceMode}
+              consent={aiConsent}
+              context={rightsInput}
+              onBack={() => setWorkflowStage("options")}
+              onContinue={() => setWorkflowStage("agencies")}
+              onRequireConsent={requireAiConsent}
+            />
           ) : workflowStage === "options" && assistanceResult ? (
             <ActionOptionsGuidance
               options={suggestedActionOptions}
               selectedIds={selectedActionOptionIds}
+              mode={assistanceMode}
+              consent={aiConsent}
+              context={rightsInput}
               onToggle={toggleActionOption}
               onBack={() => setWorkflowStage("rights")}
               onCompare={() => setWorkflowStage("comparison")}
+              onRequireConsent={requireAiConsent}
             />
           ) : workflowStage === "rights" && assistanceResult ? (
             <RightsGuidance
               rights={suggestedRights}
+              mode={assistanceMode}
+              consent={aiConsent}
+              context={rightsInput}
               onBack={() => setWorkflowStage("story")}
               onContinue={() => setWorkflowStage("options")}
+              onRequireConsent={requireAiConsent}
             />
           ) : (
             <>
@@ -757,73 +980,6 @@ export function PrivacyFirstWorkflow() {
                 </div>
                 <span className="shrink-0 bg-[#e9f4f2] px-3 py-1.5 text-xs font-bold text-river">อยู่ในเครื่องนี้เท่านั้น</span>
               </div>
-
-              <fieldset className="mt-7 border border-line bg-paper p-4 sm:p-5">
-                <legend className="px-2 text-sm font-bold text-ink">เลือกวิธีช่วยจัดเรื่อง</legend>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className={`cursor-pointer border p-4 ${assistanceMode === "rules" ? "border-river bg-[#e9f4f2]" : "border-line bg-white"}`}>
-                    <span className="flex items-start gap-3">
-                      <input
-                        type="radio"
-                        name="assistance-mode"
-                        value="rules"
-                        checked={assistanceMode === "rules"}
-                        onChange={() => {
-                          setAssistanceMode("rules");
-                          resetStoryAssistance();
-                        }}
-                        className="mt-1 h-4 w-4 accent-river"
-                      />
-                      <span>
-                        <strong className="block text-sm text-ink">ไม่ใช้ AI — แนะนำ</strong>
-                        <span className="mt-1 block text-xs leading-5 text-ink-soft">ตรวจข้อมูลในเครื่อง ใช้ต่อได้เมื่อออฟไลน์ และไม่ส่งเรื่องออกจากเครื่อง</span>
-                      </span>
-                    </span>
-                  </label>
-                  <label className={`cursor-pointer border p-4 ${assistanceMode === "ai" ? "border-saffron bg-[#fff8e8]" : "border-line bg-white"}`}>
-                    <span className="flex items-start gap-3">
-                      <input
-                        type="radio"
-                        name="assistance-mode"
-                        value="ai"
-                        checked={assistanceMode === "ai"}
-                        onChange={() => {
-                          setAssistanceMode("ai");
-                          resetStoryAssistance();
-                        }}
-                        className="mt-1 h-4 w-4 accent-river"
-                      />
-                      <span>
-                        <strong className="block text-sm text-ink">ใช้ AI ช่วยเรียบเรียง</strong>
-                        <span className="mt-1 block text-xs leading-5 text-ink-soft">ต้องมีอินเทอร์เน็ต AI ช่วยจัดภาษาเท่านั้น กฎที่ตรวจสอบแล้วเป็นผู้เลือกสิทธิและหน่วยงาน</span>
-                      </span>
-                    </span>
-                  </label>
-                </div>
-                {assistanceMode === "ai" && (
-                  <label className={`mt-4 flex cursor-pointer items-start gap-3 border-l-4 p-4 text-xs leading-5 text-ink ${shouldPromptAiConsent ? "border-coral bg-[#fff0ed]" : "border-saffron bg-white"}`}>
-                    <input
-                      ref={aiConsentRef}
-                      type="checkbox"
-                      checked={aiConsent}
-                      onChange={(event) => {
-                        setAiConsent(event.target.checked);
-                        if (event.target.checked) setAssistanceError("");
-                      }}
-                      aria-describedby={shouldPromptAiConsent ? "ai-consent-description ai-consent-error" : "ai-consent-description"}
-                      className="mt-1 h-4 w-4 shrink-0 accent-river"
-                    />
-                    <span>
-                      <span id="ai-consent-description">ฉันยินยอมให้ส่งข้อความที่เล่าและคำตอบเพิ่มเติมไปยัง Cloudflare Workers AI เพื่อประมวลผลชั่วคราว แอปไม่บันทึกข้อความลงฐานข้อมูล และไม่ควรใส่เลขบัตร รหัสผ่าน หรือข้อมูลเกินจำเป็น</span>
-                      {shouldPromptAiConsent && (
-                        <strong id="ai-consent-error" role="alert" className="mt-2 block text-sm text-coral">
-                          กรุณาติ๊กช่องสี่เหลี่ยมด้านซ้ายเพื่อยืนยัน แล้วกดปุ่มอีกครั้ง
-                        </strong>
-                      )}
-                    </span>
-                  </label>
-                )}
-              </fieldset>
 
               <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <label htmlFor="story" className="block text-base font-bold text-ink">
