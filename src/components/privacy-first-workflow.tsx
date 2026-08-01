@@ -109,6 +109,7 @@ export function PrivacyFirstWorkflow() {
     checkedAt: emergencySourceCheckedAt,
   });
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const aiConsentRef = useRef<HTMLInputElement | null>(null);
   const shouldKeepListeningRef = useRef(false);
   const restartSpeechTimerRef = useRef<number | null>(null);
   const activeStep = emergencyStatus !== "safe"
@@ -126,6 +127,9 @@ export function PrivacyFirstWorkflow() {
       .map((answer) => answer.answer),
   ].join("\n");
   const suggestedRights = suggestRights(rightsInput);
+  const shouldPromptAiConsent = assistanceMode === "ai"
+    && !aiConsent
+    && assistanceError.startsWith("กรุณาติ๊กยืนยันการใช้ AI");
   const selectedThreatIdSet = new Set(selectedThreatIds);
   const selectedThreats = emergencyCatalog.threatGroups
     .flatMap((group) => group.threats)
@@ -403,7 +407,9 @@ export function PrivacyFirstWorkflow() {
     }
 
     if (!aiConsent) {
-      setAssistanceError("กรุณายืนยันก่อนส่งข้อความไปให้ AI ช่วยเรียบเรียง");
+      setAssistanceError("กรุณาติ๊กยืนยันการใช้ AI ในกรอบสีเหลืองก่อน แล้วกดจัดลำดับข้อเท็จจริงอีกครั้ง");
+      aiConsentRef.current?.focus();
+      aiConsentRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
@@ -762,15 +768,25 @@ export function PrivacyFirstWorkflow() {
                   </label>
                 </div>
                 {assistanceMode === "ai" && (
-                  <label className="mt-4 flex cursor-pointer items-start gap-3 border-l-4 border-saffron bg-white p-4 text-xs leading-5 text-ink">
+                  <label className={`mt-4 flex cursor-pointer items-start gap-3 border-l-4 p-4 text-xs leading-5 text-ink ${shouldPromptAiConsent ? "border-coral bg-[#fff0ed]" : "border-saffron bg-white"}`}>
                     <input
+                      ref={aiConsentRef}
                       type="checkbox"
                       checked={aiConsent}
-                      onChange={(event) => setAiConsent(event.target.checked)}
+                      onChange={(event) => {
+                        setAiConsent(event.target.checked);
+                        if (event.target.checked) setAssistanceError("");
+                      }}
+                      aria-describedby={shouldPromptAiConsent ? "ai-consent-description ai-consent-error" : "ai-consent-description"}
                       className="mt-1 h-4 w-4 shrink-0 accent-river"
                     />
                     <span>
-                      ฉันยินยอมให้ส่งข้อความที่เล่าและคำตอบเพิ่มเติมไปยัง Cloudflare Workers AI เพื่อประมวลผลชั่วคราว แอปไม่บันทึกข้อความลงฐานข้อมูล และไม่ควรใส่เลขบัตร รหัสผ่าน หรือข้อมูลเกินจำเป็น
+                      <span id="ai-consent-description">ฉันยินยอมให้ส่งข้อความที่เล่าและคำตอบเพิ่มเติมไปยัง Cloudflare Workers AI เพื่อประมวลผลชั่วคราว แอปไม่บันทึกข้อความลงฐานข้อมูล และไม่ควรใส่เลขบัตร รหัสผ่าน หรือข้อมูลเกินจำเป็น</span>
+                      {shouldPromptAiConsent && (
+                        <strong id="ai-consent-error" role="alert" className="mt-2 block text-sm text-coral">
+                          กรุณาติ๊กช่องสี่เหลี่ยมด้านซ้ายเพื่อยืนยัน แล้วกดปุ่มอีกครั้ง
+                        </strong>
+                      )}
                     </span>
                   </label>
                 )}
@@ -880,7 +896,7 @@ export function PrivacyFirstWorkflow() {
 
               {(assistanceError || assistanceResult) && (
                 <section className="mt-6 border border-line bg-white p-5" aria-live="polite">
-                  {assistanceError && <p className="mb-4 border-l-4 border-saffron bg-[#fff8e8] p-3 text-sm leading-6 text-ink">{assistanceError}</p>}
+                  {assistanceError && !shouldPromptAiConsent && <p className="mb-4 border-l-4 border-saffron bg-[#fff8e8] p-3 text-sm leading-6 text-ink">{assistanceError}</p>}
                   {assistanceResult && (
                     <>
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -968,7 +984,6 @@ export function PrivacyFirstWorkflow() {
                   disabled={
                     story.trim().length < 20
                     || isAnalyzingStory
-                    || (!assistanceResult && assistanceMode === "ai" && !aiConsent)
                     || Boolean(assistanceResult && !assistanceResult.readiness.readyForReview)
                   }
                   className="min-h-12 bg-ink px-7 py-3 font-bold text-white transition hover:bg-river disabled:cursor-not-allowed disabled:bg-[#b8c3c5]"
@@ -982,7 +997,9 @@ export function PrivacyFirstWorkflow() {
                         ? "ตอบคำถามเพิ่มเติมก่อน"
                         : assistanceResult
                           ? "เพิ่มข้อมูลที่ขาดก่อน"
-                          : "จัดลำดับข้อเท็จจริง →"}
+                          : assistanceMode === "ai"
+                            ? "จัดลำดับข้อเท็จจริงด้วย AI →"
+                            : "จัดลำดับข้อเท็จจริง →"}
                 </button>
               </div>
             </>
